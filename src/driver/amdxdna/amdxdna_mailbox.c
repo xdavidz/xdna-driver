@@ -81,6 +81,8 @@ struct mailbox_channel {
 	struct work_struct		rx_work;
 	u32				i2x_head;
 	bool				bad_state;
+
+	struct timer_list		event_timer;
 };
 
 struct xdna_msg_header {
@@ -366,6 +368,7 @@ static inline int mailbox_get_msg(struct mailbox_channel *mb_chann)
 	return ret;
 }
 
+#if 0
 static irqreturn_t mailbox_irq_handler(int irq, void *p)
 {
 	struct mailbox_channel *mb_chann = p;
@@ -378,6 +381,7 @@ static irqreturn_t mailbox_irq_handler(int irq, void *p)
 
 	return IRQ_HANDLED;
 }
+#endif
 
 static void mailbox_rx_worker(struct work_struct *rx_work)
 {
@@ -558,6 +562,21 @@ int xdna_mailbox_ringbuf_show(struct mailbox *mb, struct seq_file *m)
 }
 #endif /* CONFIG_DEBUG_FS */
 
+static void mbox_timer(struct timer_list *t)
+{
+	struct mailbox_channel *mb_chann = from_timer(mb_chann, t, event_timer);
+
+	if (!mb_chann) {
+		pr_warn("DZ_ mbox is gone, stop timer!\n");
+		return;
+	}
+
+	queue_work(mb_chann->work_q, &mb_chann->rx_work);
+	mailbox_reg_write(mb_chann, mb_chann->iohub_int_addr, 0);
+
+	mod_timer(&mb_chann->event_timer, jiffies + msecs_to_jiffies(100));
+}
+
 struct mailbox_channel *
 xdna_mailbox_create_channel(struct mailbox *mb,
 			    const struct xdna_mailbox_chann_res *x2i,
@@ -566,7 +585,7 @@ xdna_mailbox_create_channel(struct mailbox *mb,
 			    int mb_irq)
 {
 	struct mailbox_channel *mb_chann;
-	int ret;
+//	int ret;
 #if defined(CONFIG_DEBUG_FS)
 	struct mailbox_res_record *record;
 	int record_found = 0;
@@ -621,6 +640,11 @@ skip_record:
 	mb_chann->i2x_head = mailbox_get_headptr(mb_chann, CHAN_RES_I2X);
 
 	INIT_WORK(&mb_chann->rx_work, mailbox_rx_worker);
+	/* workaround mailbox polling mode */
+	{
+		timer_setup(&mb_chann->event_timer, mbox_timer, 0);
+		mod_timer(&mb_chann->event_timer, jiffies + msecs_to_jiffies(100));
+	}
 	mb_chann->work_q = create_singlethread_workqueue(MAILBOX_NAME);
 	if (!mb_chann->work_q) {
 		MB_ERR(mb_chann, "Create workqueue failed");
@@ -628,12 +652,13 @@ skip_record:
 	}
 
 	/* Everything look good. Time to enable irq handler */
+#if 0
 	ret = request_irq(mb_irq, mailbox_irq_handler, 0, MAILBOX_NAME, mb_chann);
 	if (ret) {
 		MB_ERR(mb_chann, "Failed to request irq %d ret %d", mb_irq, ret);
 		goto destroy_wq;
 	}
-
+#endif
 	mb_chann->bad_state = false;
 	mutex_lock(&mb->mbox_lock);
 	list_add(&mb_chann->chann_entry, &mb->chann_list);
@@ -641,9 +666,10 @@ skip_record:
 
 	MB_DBG(mb_chann, "Mailbox channel created (irq: %d)", mb_chann->msix_irq);
 	return mb_chann;
-
+#if 0
 destroy_wq:
 	destroy_workqueue(mb_chann->work_q);
+#endif
 free_and_out:
 	kfree(mb_chann);
 	return NULL;
@@ -658,7 +684,7 @@ int xdna_mailbox_destroy_channel(struct mailbox_channel *mb_chann)
 	list_del(&mb_chann->chann_entry);
 	mutex_unlock(&mb_chann->mb->mbox_lock);
 
-	free_irq(mb_chann->msix_irq, mb_chann);
+	//free_irq(mb_chann->msix_irq, mb_chann);
 	destroy_workqueue(mb_chann->work_q);
 	/* We can clean up and release resources */
 
