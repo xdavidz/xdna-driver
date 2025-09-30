@@ -601,7 +601,9 @@ TEST_xrt_umq_single_col_resnet50_all_layer(int device_index, arg_type& arg)
   run.start();
 
   // wait forever for this test, it takes up to 10 hours on simulator
-  run.wait2();
+  //run.wait2();
+  auto state = run.wait(30000 /* 30s, some simnow server are slow */);
+  std::cout << "state: " << state <<std::endl;
 
   auto ofm = bo_ofm.map();
   std::ifstream ofm_ifs;
