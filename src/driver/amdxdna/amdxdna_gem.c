@@ -453,6 +453,10 @@ static int amdxdna_gem_shmem_obj_mmap(struct drm_gem_object *gobj,
 	XDNA_DBG(xdna, "SHMEM BO map_offset 0x%llx type %d userptr 0x%lx size 0x%lx",
 		 drm_vma_node_offset_addr(&gobj->vma_node), abo->type,
 		 vma->vm_start, gobj->size);
+
+	abo->mem.user_pasid_addr = vma->vm_start;
+	pr_warn("DZ_ set user_pasid_addr 0x%llx\n", abo->mem.user_pasid_addr);
+
 	return 0;
 
 hmm_unreg:
@@ -481,6 +485,9 @@ static int amdxdna_gem_dmabuf_mmap(struct dma_buf *dma_buf, struct vm_area_struc
 			      &num_pages);
 	if (ret)
 		goto close_vma;
+
+	abo->mem.user_pasid_addr = vma->vm_start;
+	pr_warn("DZ_ mmap user_pasid_addr 0x%llx\n", abo->mem.user_pasid_addr);
 
 	return 0;
 
@@ -964,6 +971,8 @@ int amdxdna_drm_create_bo_ioctl(struct drm_device *dev, void *data, struct drm_f
 			XDNA_DBG(xdna, "skip mem map for import bo");
 			break;
 		}
+
+     	if (iommu_mode != AMDXDNA_IOMMU_PASID) {
 		if (!abo->mem.pages) {
 			abo->mem.pages = abo->base.pages;
 			abo->mem.nr_pages = to_gobj(abo)->size >> PAGE_SHIFT;
@@ -972,6 +981,7 @@ int amdxdna_drm_create_bo_ioctl(struct drm_device *dev, void *data, struct drm_f
 		if (ret)
 			goto put_obj;
 		abo->mem.dev_addr = abo->mem.dma_addr;
+	}
 #endif
 		break;
 	default:
