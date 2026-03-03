@@ -19,11 +19,7 @@
 #include "aie4_msg_priv.h"
 
 #define AIE4_INTERVAL		20000	/* us */
-#ifdef AMDXDNA_DEVEL
-#define AIE4_TIMEOUT		(1000000 * 1000) /* us */
-#else
 #define AIE4_TIMEOUT		1000000	/* us */
-#endif
 #define AIE4_CTX_HYSTERESIS_US	1000	/* us */
 
 #define MAX_NUM_CERTS		6
@@ -267,3 +263,4 @@ struct cert_comp *aie4_lookup_cert_comp(struct amdxdna_dev_hdl *ndev, u32 msix_i
 void aie4_put_cert_comp(struct cert_comp *comp);
 
 #endif /* _AIE4_PCI_H_ */
+

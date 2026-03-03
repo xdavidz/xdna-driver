@@ -14,8 +14,19 @@
 int aie4_send_msg_wait(struct amdxdna_dev_hdl *ndev,
 		       struct xdna_mailbox_msg *msg)
 {
-	drm_WARN_ON(&ndev->xdna->ddev, !mutex_is_locked(&ndev->aie4_lock));
-	return aie_send_msg_wait(ndev->xdna, &ndev->mgmt_chann, msg);
+	struct amdxdna_dev *xdna = ndev->xdna;
+	int ret;
+
+	drm_WARN_ON(&xdna->ddev, !mutex_is_locked(&ndev->aie4_lock));
+
+	if (!ndev->mgmt_chann)
+		return -ENODEV;
+
+	ret = aie_send_msg_wait(ndev->xdna, ndev->mgmt_chann, msg);
+	if (ret == -ETIME)
+		ndev->mgmt_chann = NULL;
+
+	return ret;
 }
 
 int aie4_suspend_fw(struct amdxdna_dev_hdl *ndev)
@@ -353,7 +364,7 @@ int aie4_set_ctx_hysteresis(struct amdxdna_dev_hdl *ndev, u32 timeout_us)
 
 int aie4_set_ctx_timeout(struct amdxdna_dev_hdl *ndev, u32 timeout_ms)
 {
-	DECLARE_AIE4_MSG(aie4_msg_set_runtime_cfg, AIE4_MSG_OP_SET_RUNTIME_CONFIG);
+	DECLARE_AIE_MSG(aie4_msg_set_runtime_cfg, AIE4_MSG_OP_SET_RUNTIME_CONFIG);
 	struct aie4_msg_runtime_config_context_timeout *ctx_timeout;
 	int ret;
 

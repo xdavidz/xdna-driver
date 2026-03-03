@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0 
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (C) 2026, Advanced Micro Devices, Inc.
  */
@@ -11,7 +11,7 @@
 #define DECLARE_AIE_MSG(name, op) DECLARE_XDNA_MSG_COMMON(name, op, -1)
 
 int aie_send_msg_wait(struct amdxdna_dev *xdna,
-		      struct mailbox_channel **chann,
+		      struct mailbox_channel *chann,
 		      struct xdna_mailbox_msg *msg);
 
 #endif /* _AIE_MSG_H_ */

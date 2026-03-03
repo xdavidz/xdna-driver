@@ -45,11 +45,22 @@ is_supported_rt_cfg(struct amdxdna_dev_hdl *ndev, u32 type)
 	return false;
 }
 
-static inline int aie2_send_mgmt_msg_wait(struct amdxdna_dev_hdl *ndev,
-					  struct xdna_mailbox_msg *msg)
+static int aie2_send_mgmt_msg_wait(struct amdxdna_dev_hdl *ndev,
+				   struct xdna_mailbox_msg *msg)
 {
-	drm_WARN_ON(&ndev->xdna->ddev, !mutex_is_locked(&ndev->aie2_lock));
-	return aie_send_msg_wait(ndev->xdna, &ndev->mgmt_chann, msg);
+	struct amdxdna_dev *xdna = ndev->xdna;
+	int ret;
+
+	drm_WARN_ON(&xdna->ddev, !mutex_is_locked(&ndev->aie2_lock));
+
+	if (!ndev->mgmt_chann)
+		return -ENODEV;
+
+	ret = aie_send_msg_wait(ndev->xdna, ndev->mgmt_chann, msg);
+	if (ret == -ETIME)
+		ndev->mgmt_chann = NULL;
+
+	return ret;
 }
 
 bool aie2_is_supported_msg(struct amdxdna_dev_hdl *ndev, enum aie2_msg_opcode opcode)

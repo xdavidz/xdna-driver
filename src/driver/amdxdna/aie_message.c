@@ -5,24 +5,20 @@
 
 #include "drm_local/amdxdna_accel.h"
 
-#include "amdxdna_pci_drv.h"
 #include "aie_message.h"
+#include "amdxdna_pci_drv.h"
 
 int aie_send_msg_wait(struct amdxdna_dev *xdna,
-		      struct mailbox_channel **chann,
+		      struct mailbox_channel *chann,
 		      struct xdna_mailbox_msg *msg)
 {
 	struct xdna_notify *hdl = msg->handle;
 	int ret;
 
-	if (!(*chann))
-		return -ENODEV;
-
-	ret = xdna_send_msg_wait(xdna, *chann, msg);
+	ret = xdna_send_msg_wait(xdna, chann, msg);
 	if (ret == -ETIME) {
-		xdna_mailbox_stop_channel(*chann);
-		xdna_mailbox_destroy_channel(*chann);
-		*chann = NULL;
+		xdna_mailbox_stop_channel(chann);
+		xdna_mailbox_destroy_channel(chann);
 	}
 
 	if (!ret && *hdl->status) {
