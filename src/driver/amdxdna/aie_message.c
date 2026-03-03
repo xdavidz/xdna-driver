@@ -5,8 +5,8 @@
 
 #include "drm_local/amdxdna_accel.h"
 
-#include "aie_message.h"
 #include "amdxdna_pci_drv.h"
+#include "aie_message.h"
 
 int aie_send_msg_wait(struct amdxdna_dev *xdna,
 		      struct mailbox_channel *chann,
