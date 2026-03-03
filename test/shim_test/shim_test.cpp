@@ -73,6 +73,9 @@ void TEST_preempt_elf_io(device::id_type, std::shared_ptr<device>&, arg_type&);
 void TEST_cmd_fence_host(device::id_type, std::shared_ptr<device>&, arg_type&);
 void TEST_cmd_fence_device(device::id_type, std::shared_ptr<device>&, arg_type&);
 void TEST_preempt_full_elf_io(device::id_type, std::shared_ptr<device>&, arg_type&);
+void TEST_io_coredump(device::id_type, std::shared_ptr<device>&, arg_type&);
+void TEST_io_aie_mem(device::id_type, std::shared_ptr<device>&, arg_type&);
+void TEST_io_aie_reg(device::id_type, std::shared_ptr<device>&, arg_type&);
 
 inline void
 set_xrt_path()
@@ -804,7 +807,7 @@ std::vector<test_case> test_list {
     TEST_POSITIVE, dev_filter_is_aie, TEST_io_throughput, { IO_TEST_NOOP_RUN, IO_TEST_IOCTL_WAIT, 32000 }
   },
   test_case{ "export import BO", {},
-    TEST_POSITIVE, dev_filter_is_aie2, TEST_export_import_bo, {}
+    TEST_POSITIVE, dev_filter_xdna, TEST_export_import_bo, {}
   },
   test_case{ "ELF io test real kernel good run", {},
     TEST_POSITIVE, dev_filter_is_aie2, TEST_elf_io, { IO_TEST_NORMAL_RUN, 1 }
@@ -813,7 +816,7 @@ std::vector<test_case> test_list {
     TEST_POSITIVE, dev_filter_xdna, TEST_cmd_fence_host, {}
   },
   test_case{ "io test no op with duplicated BOs", {},
-    TEST_POSITIVE, dev_filter_is_aie2, TEST_noop_io_with_dup_bo, {}
+    TEST_POSITIVE, dev_filter_xdna, TEST_noop_io_with_dup_bo, {}
   },
   test_case{ "measure no-op kernel latency chained command", {},
     TEST_POSITIVE, dev_filter_is_aie, TEST_io_runlist_latency, { IO_TEST_NOOP_RUN, IO_TEST_IOCTL_WAIT, 32000 }
@@ -834,7 +837,7 @@ std::vector<test_case> test_list {
     TEST_POSITIVE, dev_filter_is_aie, TEST_io_runlist_throughput, { IO_TEST_NOOP_RUN, IO_TEST_POLL_WAIT, 32000 }
   },
   test_case{ "Cmd fencing (driver side)", {-1, -1},
-    TEST_POSITIVE, dev_filter_is_aie2, TEST_cmd_fence_device, {}
+    TEST_POSITIVE, dev_filter_xdna, TEST_cmd_fence_device, {}
   },
   test_case{ "sync_bo for input_output 1MiB BO", {},
     TEST_POSITIVE, dev_filter_xdna, TEST_sync_bo, {XCL_BO_FLAGS_HOST_ONLY, 0, 0x100000}
@@ -843,7 +846,7 @@ std::vector<test_case> test_list {
     TEST_POSITIVE, dev_filter_xdna, TEST_sync_bo_off_size, {XCL_BO_FLAGS_HOST_ONLY, 0, 0x100000, 0x1004, 0x3c}
   },
   test_case{ "export import BO in single process", {},
-    TEST_POSITIVE, dev_filter_is_aie2, TEST_export_import_bo_single_proc, {}
+    TEST_POSITIVE, dev_filter_xdna, TEST_export_import_bo_single_proc, {}
   },
   test_case{ "multi-command ELF io test real kernel good run", {},
     TEST_POSITIVE, dev_filter_is_aie2, TEST_elf_io, { IO_TEST_NORMAL_RUN, 3 }
@@ -888,7 +891,7 @@ std::vector<test_case> test_list {
     TEST_POSITIVE, dev_filter_is_aie2_and_amdxdna_drv, TEST_io_with_ubuf_bo, {}
   },
   test_case{ "Real kernel delay run for auto-suspend/resume", {},
-    TEST_POSITIVE, dev_filter_is_aie2, TEST_io_suspend_resume, {}
+    TEST_POSITIVE, dev_filter_is_aie, TEST_io_suspend_resume, {}
   },
   test_case{ "io test timeout run for context health report", {},
     TEST_POSITIVE, dev_filter_is_npu4, TEST_io_timeout, {}
@@ -910,7 +913,16 @@ std::vector<test_case> test_list {
     TEST_POSITIVE, dev_filter_is_aie, TEST_create_free_internal_bo, {}
   },
   test_case{ "export BO then close device", {},
-    TEST_POSITIVE, dev_filter_is_aie2, TEST_export_bo_then_close_device, {}
+    TEST_POSITIVE, dev_filter_xdna, TEST_export_bo_then_close_device, {}
+  },
+  test_case{ "get AIE coredump and check registers", {},
+    TEST_POSITIVE, dev_filter_is_npu4, TEST_io_coredump, {}
+  },
+  test_case{ "AIE MEM read/write", {},
+    TEST_POSITIVE, dev_filter_is_npu4, TEST_io_aie_mem, {}
+  },
+  test_case{ "AIE REG read/write", {},
+    TEST_POSITIVE, dev_filter_is_npu4, TEST_io_aie_reg, {}
   },
   test_case{ "failed chained command", {},
     TEST_POSITIVE, dev_filter_is_npu4, TEST_io_runlist_bad_cmd, {false}
