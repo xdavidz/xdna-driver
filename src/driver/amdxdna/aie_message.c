@@ -29,4 +29,3 @@ int aie_send_msg_wait(struct amdxdna_dev *xdna,
 
 	return ret;
 }
-

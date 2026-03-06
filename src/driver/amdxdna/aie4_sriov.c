@@ -6,8 +6,10 @@
 #include <linux/pci.h>
 
 #include "aie4_pci.h"
-#include "aie4_message.h"
+#include "amdxdna_pci_drv.h"
+#include "aie4_pci.h"
 #include "aie4_msg_priv.h"
+#include "aie4_message.h"
 
 #define NUM_VF 4
 
@@ -70,4 +72,3 @@ int aie4_sriov_configure(struct amdxdna_dev *xdna, int num_vfs)
 
 	return (num_vfs == 0) ? aie4_sriov_stop(ndev) : aie4_sriov_start(ndev, num_vfs);
 }
-

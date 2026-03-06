@@ -117,4 +117,3 @@ test_done:
 	return -EBUSY;
 }
 #endif // endif UMQ_HELLO_TEST
-

@@ -14,4 +14,3 @@
 int aie4_send_msg_wait(struct amdxdna_dev_hdl *ndev, struct xdna_mailbox_msg *msg);
 
 #endif /* _AIE4_MSG_H_ */
-

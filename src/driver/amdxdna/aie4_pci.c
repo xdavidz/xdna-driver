@@ -2659,4 +2659,3 @@ const struct amdxdna_dev_ops aie4_ops = {
 	.debugfs		= aie4_debugfs_init,
 	.sriov_configure        = aie4_sriov_configure,
 };
-

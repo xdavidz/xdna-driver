@@ -745,4 +745,3 @@ void aie4_debugfs_init(struct amdxdna_dev *xdna)
 {
 }
 #endif /* CONFIG_DEBUG_FS */
-

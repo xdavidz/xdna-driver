@@ -1159,4 +1159,3 @@ int aie4_ctx_config(struct amdxdna_ctx *ctx, u32 type, u64 value, void *buf, u32
 		return -EOPNOTSUPP;
 	}
 }
-

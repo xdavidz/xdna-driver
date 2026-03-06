@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2022-2026, Advanced Micro Devices, Inc.
+ * Copyright (C) 2022-2025, Advanced Micro Devices, Inc.
  */
 
 #include <linux/bitfield.h>
@@ -1061,4 +1061,3 @@ done_release_record:
 
 	kfree(mb);
 }
-

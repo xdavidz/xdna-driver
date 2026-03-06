@@ -189,4 +189,3 @@ int xdna_mailbox_ringbuf_show(struct mailbox *mailbox,
 #endif
 
 #endif /* _AIE_MAILBOX_ */
-

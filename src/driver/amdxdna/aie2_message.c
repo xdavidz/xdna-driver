@@ -1821,4 +1821,3 @@ int aie2_rw_aie_mem(struct amdxdna_dev_hdl *ndev, enum aie2_access_type type,
 
 	return 0;
 }
-

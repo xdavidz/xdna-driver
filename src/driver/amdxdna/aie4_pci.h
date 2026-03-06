@@ -263,4 +263,3 @@ struct cert_comp *aie4_lookup_cert_comp(struct amdxdna_dev_hdl *ndev, u32 msix_i
 void aie4_put_cert_comp(struct cert_comp *comp);
 
 #endif /* _AIE4_PCI_H_ */
-

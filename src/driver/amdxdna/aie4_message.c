@@ -37,7 +37,6 @@ int aie4_suspend_fw(struct amdxdna_dev_hdl *ndev)
 	ret = aie4_send_msg_wait(ndev, &msg);
 	if (ret) {
 		XDNA_ERR(ndev->xdna, "Failed to suspend fw, ret %d", ret);
-		return ret;
 	}
 
 	return ret;
@@ -625,4 +624,3 @@ int aie4_get_aie_coredump(struct amdxdna_dev_hdl *ndev, struct amdxdna_mgmt_dma_
 
 	return 0;
 }
-
