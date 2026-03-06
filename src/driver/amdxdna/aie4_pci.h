@@ -58,7 +58,6 @@ aie4_health_get_runlist_read_idx(struct aie4_msg_app_health_report *h)
 
 #define AIE4_INTERVAL		20000	/* us */
 #define AIE4_TIMEOUT		1000000	/* us */
-#endif
 
 #define MAX_NUM_CERTS		6
 
