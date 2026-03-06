@@ -164,7 +164,7 @@ fail:
 
 int aie4_query_cert_version(struct amdxdna_dev_hdl *ndev)
 {
-	DECLARE_AIE4_MSG(aie4_msg_get_cert_version, AIE4_MSG_OP_GET_CERT_VERSION);
+	DECLARE_AIE_MSG(aie4_msg_get_cert_version, AIE4_MSG_OP_GET_CERT_VERSION);
 	struct amdxdna_dev *xdna = ndev->xdna;
 	int ret;
 
