@@ -14,7 +14,7 @@
 #include "drm_local/amdxdna_accel.h"
 
 #include "aie4_pci.h"
-#include "aie4_message.h"
+#include "aie_message.h"
 #include "aie2_tdr.h"
 #include "aie4_solver.h"
 #include "aie4_devel.h"
@@ -444,7 +444,7 @@ static int aie4_partition_init(struct amdxdna_dev_hdl *ndev)
 	req.partition_col_start = 0;
 	req.partition_col_count = 3;
 
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	if (ret) {
 		XDNA_ERR(xdna, "partition init failed: %d", ret);
 		return ret;
@@ -470,7 +470,7 @@ static void aie4_partition_fini(struct amdxdna_dev_hdl *ndev)
 
 	req.partition_id = ndev->partition_id;
 
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	if (ret)
 		XDNA_ERR(xdna, "id %d fini failed: %d", ndev->partition_id, ret);
 	else
@@ -914,7 +914,7 @@ static int aie4_msg_destroy_context(struct amdxdna_dev_hdl *ndev, u32 hw_context
 
 	req.hw_context_id = hw_context_id;
 	req.graceful_flag = graceful ? 1 : 0;
-	return aie4_send_msg_wait(ndev, &msg);
+	return aie4_send_mgmt_msg_wait(ndev, &msg);
 }
 
 int aie4_create_context(struct amdxdna_dev_hdl *ndev, struct amdxdna_ctx *ctx)
@@ -977,7 +977,7 @@ int aie4_create_context(struct amdxdna_dev_hdl *ndev, struct amdxdna_ctx *ctx)
 		goto done;
 	}
 
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	if (ret) {
 		XDNA_ERR(xdna, "create ctx failed: %d", ret);
 		goto done;

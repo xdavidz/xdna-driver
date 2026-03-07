@@ -14,7 +14,7 @@
 #include <linux/string.h>
 
 #include "aie4_pci.h"
-#include "aie4_message.h"
+#include "aie_message.h"
 #include "aie4_msg_priv.h"
 #include "amdxdna_dpt.h"
 #include "amdxdna_mgmt.h"
@@ -92,7 +92,7 @@ static int test_msg_echo_impl(struct amdxdna_dev_hdl *ndev, u32 val1, u32 val2)
 	req.val2 = val2;
 
 	mutex_lock(&ndev->aie4_lock);
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	mutex_unlock(&ndev->aie4_lock);
 	if (ret) {
 		XDNA_ERR(xdna, "ping fw msg sent failed, ret: %d", ret);
@@ -182,7 +182,7 @@ static int test_msg_identify(struct amdxdna_dev_hdl *ndev)
 	int ret;
 
 	mutex_lock(&ndev->aie4_lock);
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	mutex_unlock(&ndev->aie4_lock);
 	if (ret) {
 		XDNA_ERR(xdna, "identify fw msg sent failed, ret: %d", ret);
@@ -209,7 +209,7 @@ static int test_msg_tile_info(struct amdxdna_dev_hdl *ndev)
 	int ret;
 
 	mutex_lock(&ndev->aie4_lock);
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	mutex_unlock(&ndev->aie4_lock);
 	if (ret) {
 		XDNA_ERR(xdna, "tile info msg sent failed, ret: %d", ret);
@@ -257,7 +257,7 @@ static int test_msg_version_info(struct amdxdna_dev_hdl *ndev)
 	int ret;
 
 	mutex_lock(&ndev->aie4_lock);
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	mutex_unlock(&ndev->aie4_lock);
 	if (ret) {
 		XDNA_ERR(xdna, "version info msg sent failed, ret: %d", ret);
@@ -293,7 +293,7 @@ static int test_msg_column_info(struct amdxdna_dev_hdl *ndev)
 	req.aie4_col_bitmap = (u32)0;
 
 	mutex_lock(&ndev->aie4_lock);
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	mutex_unlock(&ndev->aie4_lock);
 	if (ret) {
 		XDNA_ERR(xdna, "column info msg sent failed, ret: %d", ret);
@@ -366,7 +366,7 @@ static int test_msg_async_event(struct amdxdna_dev_hdl *ndev)
 	req.buff_size = async_buf_size;
 
 	mutex_lock(&ndev->aie4_lock);
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	mutex_unlock(&ndev->aie4_lock);
 	if (ret) {
 		XDNA_ERR(xdna, "async event msg sent failed, ret: %d", ret);
@@ -644,7 +644,7 @@ static ssize_t aie4_keep_partition_write(struct file *file, const char __user *p
 	req.type = AIE4_RUNTIME_CONFIG_KEEP_PARTITIONS;
 
 	mutex_lock(&ndev->aie4_lock);
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	mutex_unlock(&ndev->aie4_lock);
 
 	XDNA_INFO(xdna, "request: %d, %s",
@@ -695,7 +695,7 @@ static ssize_t aie4_dpm_override_write(struct file *file, const char __user *ptr
 	msg.send_size = sizeof(req.type) + sizeof(*dpm_override);
 
 	mutex_lock(&ndev->aie4_lock);
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	mutex_unlock(&ndev->aie4_lock);
 
 	XDNA_INFO(xdna, "request hclk: %d request aieclk: %d, %s", hclk_dpm_level,

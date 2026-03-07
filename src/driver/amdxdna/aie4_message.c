@@ -6,13 +6,13 @@
 #include "aie4_pci.h"
 #include "amdxdna_mailbox.h"
 #include "amdxdna_mgmt.h"
-#include "aie4_message.h"
+#include "aie_message.h"
 #include "aie4_msg_priv.h"
 
 #define ASYNC_BUF_SIZE		SZ_8K
 
-int aie4_send_msg_wait(struct amdxdna_dev_hdl *ndev,
-		       struct xdna_mailbox_msg *msg)
+int aie4_send_mgmt_msg_wait(struct amdxdna_dev_hdl *ndev,
+			    struct xdna_mailbox_msg *msg)
 {
 	struct amdxdna_dev *xdna = ndev->xdna;
 	int ret;
@@ -34,7 +34,7 @@ int aie4_suspend_fw(struct amdxdna_dev_hdl *ndev)
 	DECLARE_AIE_MSG(aie4_msg_suspend, AIE4_MSG_OP_SUSPEND);
 	int ret;
 
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	if (ret) {
 		XDNA_ERR(ndev->xdna, "Failed to suspend fw, ret %d", ret);
 	}
@@ -55,7 +55,7 @@ int aie4_force_preemption(struct amdxdna_dev_hdl *ndev)
 
 	msg.send_size = sizeof(req.type) + sizeof(*force_preempt);
 
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	if (ret) {
 		XDNA_ERR(ndev->xdna, "Failed to set runtime config, ret %d", ret);
 		return ret;
@@ -70,7 +70,7 @@ int aie4_check_firmware_version(struct amdxdna_dev_hdl *ndev)
 	struct amdxdna_dev *xdna = ndev->xdna;
 	int ret;
 
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	if (ret) {
 		XDNA_ERR(xdna, "Failed to get protocol version, ret %d", ret);
 		return ret;
@@ -131,7 +131,7 @@ int aie4_query_aie_status(struct amdxdna_dev_hdl *ndev, char __user *buf,
 	req.aie4_col_bitmap = aie_bitmap;
 
 	amdxdna_mgmt_buff_clflush(dma_hdl, 0, 0);
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	if (ret) {
 		XDNA_ERR(xdna, "Error during NPU query, status %d", ret);
 		goto fail;
@@ -168,7 +168,7 @@ int aie4_query_cert_version(struct amdxdna_dev_hdl *ndev)
 	struct amdxdna_dev *xdna = ndev->xdna;
 	int ret;
 
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	if (ret)
 		return ret;
 
@@ -191,7 +191,7 @@ int aie4_query_aie_version(struct amdxdna_dev_hdl *ndev, struct aie_version *ver
 	struct amdxdna_dev *xdna = ndev->xdna;
 	int ret;
 
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	if (ret)
 		return ret;
 
@@ -209,7 +209,7 @@ int aie4_query_aie_metadata(struct amdxdna_dev_hdl *ndev, struct aie_metadata *m
 	DECLARE_AIE_MSG(aie4_msg_aie4_tile_info, AIE4_MSG_OP_AIE_TILE_INFO);
 	int ret;
 
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	if (ret)
 		return ret;
 
@@ -259,7 +259,7 @@ int aie4_query_aie_telemetry(struct amdxdna_dev_hdl *ndev, u32 type, u32 pasid, 
 	req.buf_size = size;
 	req.hw_context_id = 0; // Fix me for next fw release when per ctx telemetry is supported
 
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	if (ret) {
 		XDNA_ERR(xdna, "Failed to get telemetry, ret %d", ret);
 		return ret;
@@ -275,7 +275,7 @@ int aie4_set_pm_msg(struct amdxdna_dev_hdl *ndev, u32 target)
 
 	req.power_mode = target;
 
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	if (ret)
 		return ret;
 
@@ -289,7 +289,7 @@ int aie4_calibrate_clock(struct amdxdna_dev_hdl *ndev)
 
 	req.time_base_ns = ktime_get_real_ns();
 
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	if (ret) {
 		XDNA_ERR(ndev->xdna, "Calibrate clock failed, ret %d", ret);
 		return ret;
@@ -344,7 +344,7 @@ int aie4_start_fw_log(struct amdxdna_dev_hdl *ndev, struct amdxdna_mgmt_dma_hdl 
 	req.buff_addr = addr;
 	req.log_level = level;
 
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	if (ret) {
 		XDNA_ERR(xdna, "Start fw log failed, ret 0x%x", resp.status);
 		return -EINVAL;
@@ -372,7 +372,7 @@ int aie4_set_ctx_hysteresis(struct amdxdna_dev_hdl *ndev, u32 timeout_us)
 
 	msg.send_size = sizeof(req.type) + sizeof(*hyst);
 
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	if (ret) {
 		XDNA_ERR(ndev->xdna, "Failed to set runtime config, ret %d", ret);
 		return ret;
@@ -395,7 +395,7 @@ int aie4_set_ctx_timeout(struct amdxdna_dev_hdl *ndev, u32 timeout_ms)
 
 	msg.send_size = sizeof(req.type) + sizeof(*ctx_timeout);
 
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	if (ret) {
 		XDNA_ERR(ndev->xdna, "Failed to set runtime config, ret %d", ret);
 		return ret;
@@ -419,7 +419,7 @@ int aie4_set_log_level(struct amdxdna_dev_hdl *ndev, u8 level)
 
 	msg.send_size = sizeof(req.type) + sizeof(*log);
 
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	if (ret) {
 		XDNA_ERR(ndev->xdna, "Failed to set runtime config, ret %d", ret);
 		return ret;
@@ -433,7 +433,7 @@ int aie4_stop_fw_log(struct amdxdna_dev_hdl *ndev)
 	DECLARE_AIE_MSG(aie4_msg_dram_logging_stop, AIE4_MSG_OP_DRAM_LOGGING_STOP);
 	int ret;
 
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	if (ret) {
 		XDNA_ERR(ndev->xdna, "Start fw log failed, ret 0x%x", resp.status);
 		return -EINVAL;
@@ -463,7 +463,7 @@ int aie4_start_fw_trace(struct amdxdna_dev_hdl *ndev, struct amdxdna_mgmt_dma_hd
 	req.dram_buffer_address = addr;
 	req.pasid.raw = 0;
 
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	if (ret) {
 		XDNA_ERR(xdna, "start fw trace failed, ret 0x%x", resp.status);
 		return -EINVAL;
@@ -487,7 +487,7 @@ int aie4_set_trace_categories(struct amdxdna_dev_hdl *ndev, u32 categories)
 
 	req.event_trace_categories = categories;
 
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	if (ret) {
 		XDNA_ERR(xdna, "Failed to set fw trace categories, ret 0x%x", resp.status);
 		return -EINVAL;
@@ -502,7 +502,7 @@ int aie4_stop_fw_trace(struct amdxdna_dev_hdl *ndev)
 	struct amdxdna_dev *xdna = ndev->xdna;
 	int ret;
 
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	if (ret) {
 		XDNA_ERR(xdna, "stop fw trace failed, ret 0x%x", resp.status);
 		return -EINVAL;
@@ -526,7 +526,7 @@ int aie4_attach_work_buffer(struct amdxdna_dev_hdl *ndev, u32 pasid, dma_addr_t 
 	req.buff_size = size;
 	req.pasid.raw = pasid;
 
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	if (ret) {
 		XDNA_ERR(xdna, "Failed to attach mpnpu work buffer, ret %d", ret);
 		return ret;
@@ -541,7 +541,7 @@ int aie4_detach_work_buffer(struct amdxdna_dev_hdl *ndev)
 	struct amdxdna_dev *xdna = ndev->xdna;
 	int ret;
 
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	if (ret) {
 		XDNA_ERR(xdna, "Failed to detach mpnpu work buffer, ret %d", ret);
 		return ret;
@@ -565,7 +565,7 @@ int aie4_rw_aie_reg(struct amdxdna_dev_hdl *ndev, enum aie4_aie_debug_op op,
 	if (op == AIE4_AIE_DBG_OP_REG_WRITE)
 		req.reg_access.reg_wval = *value;
 
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	if (ret) {
 		XDNA_ERR(xdna, "AIE reg %s failed, ret %d",
 			 op == AIE4_AIE_DBG_OP_REG_READ ? "read" : "write", ret);
@@ -602,7 +602,7 @@ int aie4_rw_aie_mem(struct amdxdna_dev_hdl *ndev, enum aie4_aie_debug_op op,
 	req.mem_access.pasid.f.pasid = pasid;
 	req.mem_access.pasid.f.pasid_vld = 1;
 
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	if (ret) {
 		XDNA_ERR(xdna, "AIE mem %s failed, ret %d",
 			 op == AIE4_AIE_DBG_OP_BLOCK_READ ? "read" : "write", ret);
@@ -638,7 +638,7 @@ int aie4_get_aie_coredump(struct amdxdna_dev_hdl *ndev, struct amdxdna_mgmt_dma_
 	req.reserved = 0;
 	req.buffer_list_addr = addr;
 
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	if (ret) {
 		XDNA_ERR(xdna, "Get AIE coredump failed, status 0x%x", resp.status);
 		return -EINVAL;

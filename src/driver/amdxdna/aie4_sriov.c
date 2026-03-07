@@ -9,7 +9,7 @@
 #include "amdxdna_pci_drv.h"
 #include "aie4_pci.h"
 #include "aie4_msg_priv.h"
-#include "aie4_message.h"
+#include "aie_message.h"
 
 #define NUM_VF 4
 
@@ -32,7 +32,7 @@ static int aie4_sriov_stop(struct amdxdna_dev_hdl *ndev)
 	ndev->num_vfs = 0;
 	req.rsvd = 0;
 	mutex_lock(&ndev->aie4_lock);
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	mutex_unlock(&ndev->aie4_lock);
 	if (ret)
 		XDNA_ERR(xdna, "destroy vfs op failed: %d", ret);
@@ -56,7 +56,7 @@ static int aie4_sriov_start(struct amdxdna_dev_hdl *ndev, int num_vfs)
 	ndev->num_vfs = num_vfs;
 	req.vf_cnt = ndev->num_vfs;
 	mutex_lock(&ndev->aie4_lock);
-	ret = aie4_send_msg_wait(ndev, &msg);
+	ret = aie4_send_mgmt_msg_wait(ndev, &msg);
 	mutex_unlock(&ndev->aie4_lock);
 	if (ret) {
 		XDNA_ERR(xdna, "create vfs op failed: %d", ret);
