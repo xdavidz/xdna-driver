@@ -71,8 +71,9 @@ static const struct amdxdna_fw_feature_tbl npu1_fw_feature_table[] = {
 	{ 0 }
 };
 
-static int npu1_set_dpm(struct amdxdna_dev_hdl *ndev, u32 dpm_level)
+static int npu1_set_dpm(struct aie_device *aie, u32 dpm_level)
 {
+	struct amdxdna_dev_hdl *ndev = aie->xdna->dev_handle;
 	u32 npuclk, hclk;
 	int ret;
 
@@ -82,13 +83,13 @@ static int npu1_set_dpm(struct amdxdna_dev_hdl *ndev, u32 dpm_level)
 	if (ret)
 		return ret;
 
-	ndev->npuclk_freq = npuclk;
-	ndev->hclk_freq = hclk;
-	ndev->max_tops = 2 * ndev->total_col;
-	ndev->curr_tops = ndev->max_tops * hclk / 1028;
+	ndev->aie.npuclk_freq = npuclk;
+	ndev->aie.hclk_freq = hclk;
+	ndev->aie.max_tops = 2 * ndev->total_col;
+	ndev->aie.curr_tops = ndev->aie.max_tops * hclk / 1028;
 
 	XDNA_DBG(ndev->aie.xdna, "MP-NPU clock %d, H clock %d\n",
-		 ndev->npuclk_freq, ndev->hclk_freq);
+		 ndev->aie.npuclk_freq, ndev->aie.hclk_freq);
 	return 0;
 }
 
@@ -123,7 +124,7 @@ static const struct amdxdna_dev_priv npu1_dev_priv = {
 		DEFINE_BAR_OFFSET(SMU_RESP_REG, NPU1_SMU, MPNPU_PUB_SCRATCH6),
 		DEFINE_BAR_OFFSET(SMU_OUT_REG,  NPU1_SMU, MPNPU_PUB_SCRATCH7),
 	},
-	.hw_ops		= &(const struct aie2_hw_ops) {
+	.hw_ops		= &(const struct aie_hw_ops) {
 		.set_dpm = npu1_set_dpm,
 	},
 };
