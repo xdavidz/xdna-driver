@@ -174,8 +174,8 @@ enum amdxdna_fw_buf_type {
  *                                struct amdxdna_fw_buffer_metadata.
  * @index: uC index. The payload BO is sliced per-uC; @index must be unique
  *         within an array and stay below the device's CERT uC count.
- * @size:  Per-uC slice size in bytes. Entries with size == 0 are ignored,
- *         but at least one entry must have a non-zero size.
+ * @size:  Per-uC slice size in bytes. Entries with size 0 are skipped.
+ *         At least one entry must have a size greater than 0.
  */
 struct amdxdna_uc_info_entry {
 	__u32 index;
@@ -191,10 +191,6 @@ struct amdxdna_uc_info_entry {
  *              concatenated per-uC slices.
  * @command_id: User tag for trace correlation.
  * @uc_info:    Per-uC slice descriptors, in payload BO layout order.
- *
- * The buffer is released when the hardware context is suspended, reset or
- * destroyed, and is not restored; user space recreates the hardware context
- * and attaches the buffer again.
  */
 struct amdxdna_fw_buffer_metadata {
 	__u8 buf_type;
