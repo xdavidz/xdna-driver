@@ -1565,8 +1565,9 @@ TEST_io_gemm(device::id_type id, std::shared_ptr<device>& sdev, arg_type& arg)
 void
 TEST_io_gemm_after_idle(device::id_type id, std::shared_ptr<device>& sdev, arg_type& arg)
 {
-  // Longer than the driver's runtime autosuspend delay; an attached debug BO
-  // keeps the device active, so GEMM still reports through it afterwards.
+  // Longer than the driver's runtime autosuspend delay, so the device can
+  // suspend while the debug BO is attached. The driver configures the BO
+  // again on resume, so GEMM still reports through it afterwards.
   elf_io_gemm_test_bo_set boset{sdev.get(), "gemm", static_cast<unsigned int>(arg[0])};
   boset.run();
 }
