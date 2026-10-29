@@ -70,6 +70,8 @@ struct amdxdna_hwctx_priv {
 	u32                             hw_ctx_id;
 	/* Attached debug buffers, held until removal or fini. */
 	struct amdxdna_gem_obj          *fw_buf_bo[AMDXDNA_FW_BUF_NUM];
+	/* Their configuration, sent again when the context is created. */
+	struct aie4_msg_context_config_cert_logging fw_buf_cl[AMDXDNA_FW_BUF_NUM];
 	/*
 	 * Partition this ctx runs in: its own when
 	 * dev_info->partition_per_hwctx is set, otherwise a copy of the
