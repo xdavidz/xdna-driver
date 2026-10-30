@@ -5,6 +5,7 @@
 
 #include "drm/amdxdna_accel.h"
 #include <drm/drm_device.h>
+#include <drm/drm_drv.h>
 #include <drm/drm_gem.h>
 #include <drm/drm_gem_shmem_helper.h>
 #include <drm/drm_print.h>
@@ -1582,6 +1583,48 @@ static void job_timeout(struct amdxdna_sched_job *job)
 	job_done(job);
 }
 
+/* Longest time a running job may stay unfinished once the device is being removed. */
+#define AIE4_REMOVE_JOB_TIMEOUT_MS	10000
+
+/*
+ * Wait for job @seq like wait_till_seq_completed(), but wake every second to
+ * check for device removal. The removal waits for every job to finish before
+ * it removes the contexts, so a job that never finishes would block it.
+ * Return true when the device has been in removal for
+ * AIE4_REMOVE_JOB_TIMEOUT_MS and the job is still running; the caller then
+ * aborts the job.
+ */
+static bool aie4_job_stuck_at_removal(struct amdxdna_hwctx *hwctx, u64 seq)
+{
+	struct amdxdna_dev *xdna = hwctx->client->xdna;
+	struct cert_comp *cert_comp;
+	unsigned long end = 0;
+	long ret;
+
+	for (;;) {
+		cert_comp = aie4_get_cert_comp(hwctx);
+		if (!cert_comp)
+			return false;
+		ret = wait_event_freezable_timeout(cert_comp->waitq,
+						   check_cmd_done(hwctx, seq, cert_comp),
+						   HZ);
+		aie4_put_cert_comp(cert_comp);
+		/* Done or disconnected: job_worker() handles it as before. */
+		if (ret)
+			return false;
+		if (!drm_dev_is_unplugged(&xdna->ddev))
+			continue;
+		if (!end) {
+			XDNA_ERR(xdna, "%s has running jobs at device removal", hwctx->name);
+			end = jiffies + msecs_to_jiffies(AIE4_REMOVE_JOB_TIMEOUT_MS);
+		} else if (time_after(jiffies, end)) {
+			XDNA_ERR(xdna, "%s jobs still running after %u ms, aborting them",
+				 hwctx->name, AIE4_REMOVE_JOB_TIMEOUT_MS);
+			return true;
+		}
+	}
+}
+
 static void job_worker(struct work_struct *work)
 {
 	struct amdxdna_hwctx_priv *priv =
@@ -1590,7 +1633,11 @@ static void job_worker(struct work_struct *work)
 	struct amdxdna_sched_job *job;
 
 	while ((job = peek_running_job(hwctx))) {
-		wait_till_seq_completed(hwctx, job->seq);
+		if (aie4_job_stuck_at_removal(hwctx, job->seq)) {
+			dequeue_running_job(hwctx, job);
+			job_abort(job);
+			continue;
+		}
 		if (get_read_index(hwctx) > job->seq) {
 			trace_xdna_job_queue(hwctx->name, job->seq,
 					     READ_ONCE(hwctx->priv->write_index) -
