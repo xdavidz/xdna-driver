@@ -388,7 +388,11 @@ static int aie4_fw_load(struct amdxdna_dev_hdl *ndev)
 {
 	int ret;
 
-	ret = aie_smu_init(ndev->aie.smu_hdl);
+	/*
+	 * Power on only. After a firmware load failure, the SMU returns 0xff
+	 * to power off, and a power off here would fail every later probe.
+	 */
+	ret = aie_smu_power_on(ndev->aie.smu_hdl);
 	if (ret) {
 		XDNA_ERR(ndev->aie.xdna, "failed to init smu, ret %d", ret);
 		return ret;

@@ -93,6 +93,17 @@ int aie_smu_init(struct smu_device *smu)
 	return 0;
 }
 
+int aie_smu_power_on(struct smu_device *smu)
+{
+	int ret;
+
+	ret = aie_smu_exec(smu, AIE_SMU_POWER_ON, 0, NULL);
+	if (ret)
+		drm_err(smu->ddev, "Power on failed, ret %d", ret);
+
+	return ret;
+}
+
 void aie_smu_fini(struct smu_device *smu)
 {
 	int ret;

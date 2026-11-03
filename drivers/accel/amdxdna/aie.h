@@ -216,6 +216,7 @@ int aie_psp_waitmode_poll(struct psp_device *psp);
 /* aie_smu.c */
 struct smu_device *aiem_smu_create(struct drm_device *ddev, struct smu_config *conf);
 int aie_smu_init(struct smu_device *smu);
+int aie_smu_power_on(struct smu_device *smu);
 void aie_smu_fini(struct smu_device *smu);
 int aie_smu_set_clocks(struct smu_device *smu, u32 *npuclk, u32 *hclk);
 int aie_smu_set_dpm(struct smu_device *smu, u32 dpm_level);
