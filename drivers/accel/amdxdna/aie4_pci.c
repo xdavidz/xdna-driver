@@ -401,7 +401,8 @@ static int aie4_fw_load(struct amdxdna_dev_hdl *ndev)
 	ret = aie_psp_start(ndev->aie.psp_hdl);
 	if (ret) {
 		XDNA_ERR(ndev->aie.xdna, "failed to start psp, ret %d", ret);
-		aie_smu_fini(ndev->aie.smu_hdl);
+		/* Also release the PSP TMR so a later probe can load firmware again */
+		aie4_fw_unload(ndev);
 	}
 
 	return ret;
