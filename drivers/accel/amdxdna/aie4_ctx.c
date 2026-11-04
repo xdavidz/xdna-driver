@@ -2063,7 +2063,7 @@ static int aie4_hwctx_cfg_fw_buf(struct amdxdna_hwctx *hwctx,
 	int i;
 
 	if (!meta || size < sizeof(*meta)) {
-		XDNA_ERR(xdna, "Invalid debug buffer descriptor, size %u", size);
+		XDNA_DBG(xdna, "Invalid debug buffer descriptor, size %u", size);
 		return -EINVAL;
 	}
 
@@ -2072,7 +2072,7 @@ static int aie4_hwctx_cfg_fw_buf(struct amdxdna_hwctx *hwctx,
 
 	ret = aie4_fw_buf_property(meta->buf_type);
 	if (ret < 0) {
-		XDNA_ERR(xdna, "Unsupported buf_type %u", meta->buf_type);
+		XDNA_DBG(xdna, "Unsupported buf_type %u", meta->buf_type);
 		return ret;
 	}
 	property = ret;
@@ -2085,13 +2085,13 @@ static int aie4_hwctx_cfg_fw_buf(struct amdxdna_hwctx *hwctx,
 	 */
 	payload_bo = amdxdna_gem_get_obj(client, meta->bo_handle, AMDXDNA_BO_SHARE);
 	if (!payload_bo) {
-		XDNA_ERR(xdna, "Get bo %u failed", meta->bo_handle);
+		XDNA_DBG(xdna, "Get bo %u failed", meta->bo_handle);
 		return -EINVAL;
 	}
 
 	if (!attach) {
 		if (payload_bo != priv->fw_buf_bo[meta->buf_type]) {
-			XDNA_ERR(xdna, "BO %u is not attached as debug buffer type %u on %s",
+			XDNA_DBG(xdna, "BO %u is not attached as debug buffer type %u on %s",
 				 meta->bo_handle, meta->buf_type, hwctx->name);
 			ret = -EINVAL;
 			goto put_obj;
@@ -2121,21 +2121,21 @@ static int aie4_hwctx_cfg_fw_buf(struct amdxdna_hwctx *hwctx,
 
 	if (!meta->num_ucs || meta->num_ucs > AIE4_MAX_NUM_CERTS ||
 	    size < struct_size(meta, uc_info, meta->num_ucs)) {
-		XDNA_ERR(xdna, "Invalid num_ucs %u for size %u", meta->num_ucs, size);
+		XDNA_DBG(xdna, "Invalid num_ucs %u for size %u", meta->num_ucs, size);
 		ret = -EINVAL;
 		goto put_obj;
 	}
 
 	/* One buffer of each type per context. */
 	if (priv->fw_buf_bo[meta->buf_type]) {
-		XDNA_ERR(xdna, "Debug buffer type %u already attached on %s",
+		XDNA_DBG(xdna, "Debug buffer type %u already attached on %s",
 			 meta->buf_type, hwctx->name);
 		ret = -EBUSY;
 		goto put_obj;
 	}
 
 	if (payload_bo->assigned_hwctx != AMDXDNA_INVALID_CTX_HANDLE) {
-		XDNA_ERR(xdna, "BO %u already attached to a context",
+		XDNA_DBG(xdna, "BO %u already attached to a context",
 			 meta->bo_handle);
 		ret = -EBUSY;
 		goto put_obj;
@@ -2150,7 +2150,7 @@ static int aie4_hwctx_cfg_fw_buf(struct amdxdna_hwctx *hwctx,
 
 	base_addr = amdxdna_gem_dev_addr(payload_bo);
 	if (base_addr == AMDXDNA_INVALID_ADDR) {
-		XDNA_ERR(xdna, "Debug buffer type %u payload BO %u is not mapped",
+		XDNA_DBG(xdna, "Debug buffer type %u payload BO %u is not mapped",
 			 meta->buf_type, meta->bo_handle);
 		ret = -EINVAL;
 		goto put_obj;
@@ -2162,13 +2162,13 @@ static int aie4_hwctx_cfg_fw_buf(struct amdxdna_hwctx *hwctx,
 		u32 next_size;
 
 		if (index >= AIE4_MAX_NUM_CERTS) {
-			XDNA_ERR(xdna, "Invalid uc index %u", index);
+			XDNA_DBG(xdna, "Invalid uc index %u", index);
 			ret = -EINVAL;
 			goto put_obj;
 		}
 
 		if (seen & BIT(index)) {
-			XDNA_ERR(xdna, "Duplicate uc index %u", index);
+			XDNA_DBG(xdna, "Duplicate uc index %u", index);
 			ret = -EINVAL;
 			goto put_obj;
 		}
@@ -2179,7 +2179,7 @@ static int aie4_hwctx_cfg_fw_buf(struct amdxdna_hwctx *hwctx,
 
 		if (check_add_overflow(prev_size, slice_size, &next_size) ||
 		    next_size > payload_bo->mem.size) {
-			XDNA_ERR(xdna, "uc[%u] slice 0x%x at 0x%x overflows bo size %lu",
+			XDNA_DBG(xdna, "uc[%u] slice 0x%x at 0x%x overflows bo size %lu",
 				 index, slice_size, prev_size, payload_bo->mem.size);
 			ret = -EINVAL;
 			goto put_obj;
@@ -2192,7 +2192,7 @@ static int aie4_hwctx_cfg_fw_buf(struct amdxdna_hwctx *hwctx,
 	}
 
 	if (!used) {
-		XDNA_ERR(xdna, "Debug buffer type %u: all uc slices are empty",
+		XDNA_DBG(xdna, "Debug buffer type %u: all uc slices are empty",
 			 meta->buf_type);
 		ret = -EINVAL;
 		goto put_obj;
