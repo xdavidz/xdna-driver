@@ -378,11 +378,13 @@ static void aie4_async_note_worker(struct work_struct *work)
 			  aie4_async_note_str(ev->event_id), ev->ctx_id);
 		break;
 	case AIE4_ASYNC_NOTE_REPORT_DROPPED:
-		/* Nothing to recover, but make the lost report visible. */
 		XDNA_ERR(xdna,
 			 "async notification %s: no async buffer for event type %u, ctx_id=%u",
 			 aie4_async_note_str(ev->event_id), ev->async_event_type,
 			 ev->ctx_id);
+		/* A dropped context error report still names the context: recover it. */
+		if (ev->async_event_type == AIE4_ASYNC_EVENT_TYPE_CTX_ERROR)
+			aie4_async_note_ctx_error_recover(aie, ev->ctx_id);
 		break;
 	case AIE4_ASYNC_NOTE_POWER_ERROR:
 		XDNA_ERR(xdna, "async notification %s: unrecoverable power sequencing error",

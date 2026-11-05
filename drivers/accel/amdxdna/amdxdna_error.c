@@ -447,6 +447,32 @@ int amdxdna_async_events_alloc(struct aie_device *aie,
 	return 0;
 }
 
+/* Register the allocated buffers with firmware again after a reset. */
+int amdxdna_async_events_register(struct aie_device *aie)
+{
+	struct amdxdna_async_events *events = aie->async_events;
+	struct amdxdna_dev *xdna = aie->xdna;
+	int i, ret;
+
+	drm_WARN_ON(&xdna->ddev, !mutex_is_locked(&xdna->dev_lock));
+	if (!events)
+		return -EINVAL;
+
+	for (i = 0; i < events->event_cnt; i++) {
+		struct amdxdna_async_event *e = &events->event[i];
+
+		if (!e->hdl)
+			continue;
+		e->resp.status = xdna->dev_info->async_max_status_code;
+		memset(e->buf, 0, e->size);
+		ret = amdxdna_async_event_send(e);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
 bool amdxdna_async_events_queue_work(struct aie_device *aie, struct work_struct *work)
 {
 	/* Pairs with the release in amdxdna_async_events_alloc(). */

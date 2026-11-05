@@ -703,12 +703,6 @@ int aie4_setup_aie(struct amdxdna_dev_hdl *ndev)
 			return ret;
 	}
 
-	ret = amdxdna_async_events_alloc(&ndev->aie, AMDXDNA_MAX_ASYNC_EVENT_BUFS);
-	if (ret) {
-		XDNA_ERR(ndev->aie.xdna, "Allocate async events failed, ret %d", ret);
-		goto partition_fini;
-	}
-
 	/*
 	 * NPU_AC_PERF is hard-coded for now to maximize throughput; a sysfs
 	 * control node to allow runtime mode changes may be added later.
@@ -717,11 +711,6 @@ int aie4_setup_aie(struct amdxdna_dev_hdl *ndev)
 	aie4_restore_power_mode(ndev);
 
 	return 0;
-
-partition_fini:
-	if (!AIE4_PART_PER_HWCTX(ndev->aie.xdna))
-		aie4_partition_destroy(ndev, ndev->partition_id);
-	return ret;
 }
 
 //FIX this after fw_load can work after FLR
@@ -798,8 +787,21 @@ static int aie4_vf_hw_start(struct amdxdna_dev_hdl *ndev)
 	if (ret)
 		goto mbox_fini;
 
+	/*
+	 * A VF registers no report buffers: firmware keeps a VF's buffers across
+	 * VF suspend, FLR and VF destroy, and would write into freed memory.
+	 * Context errors arrive as AIE4_MSG_OP_ASYNC_EVENT_NOTE instead; this
+	 * creates the workqueue that handles them, with no buffers.
+	 */
+	ret = amdxdna_async_events_alloc(&ndev->aie, 0);
+	if (ret)
+		goto partition_fini;
+
 	return 0;
 
+partition_fini:
+	if (!AIE4_PART_PER_HWCTX(ndev->aie.xdna))
+		aie4_partition_destroy(ndev, ndev->partition_id);
 mbox_fini:
 	aie4_mailbox_fini(ndev);
 	return ret;
@@ -842,8 +844,24 @@ static int aie4_classic_hw_restart(struct amdxdna_dev_hdl *ndev)
 	if (ret)
 		goto mbox_fini;
 
+	/*
+	 * An FLR restarts the firmware, which forgets the registered buffers;
+	 * the buffers are kept across the reset, so register them again.
+	 */
+	if (ndev->aie.async_events)
+		ret = amdxdna_async_events_register(&ndev->aie);
+	else
+		ret = amdxdna_async_events_alloc(&ndev->aie, AMDXDNA_MAX_ASYNC_EVENT_BUFS);
+	if (ret) {
+		XDNA_ERR(ndev->aie.xdna, "Set up async events failed, ret %d", ret);
+		goto partition_fini;
+	}
+
 	return 0;
 
+partition_fini:
+	if (!AIE4_PART_PER_HWCTX(ndev->aie.xdna))
+		aie4_partition_destroy(ndev, ndev->partition_id);
 mbox_fini:
 	aie4_mailbox_fini(ndev);
 	return ret;
@@ -2255,11 +2273,9 @@ static void aie4_classic_reset_prepare(struct amdxdna_dev *xdna)
 	aie4_mailbox_fini(ndev);
 
 	/*
-	 * Free async event pool after mailbox teardown to prevent channel
-	 * cleanup from firing callbacks on freed slots.
-	 * reset_done re-allocates via aie4_setup_aie.
+	 * Keep the async event pool: firmware still runs and may write it until
+	 * the FLR. aie4_classic_hw_restart() registers the buffers again.
 	 */
-	amdxdna_async_events_free(&ndev->aie);
 
 	aie4_fw_clear_alive(xdna);
 }

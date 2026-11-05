@@ -199,6 +199,7 @@ void amdxdna_aie_fill_decode(enum aie_error_category cat, u32 mod_type,
 			     struct amdxdna_aie_err_decode *out);
 
 int amdxdna_async_events_alloc(struct aie_device *aie, u32 total_col);
+int amdxdna_async_events_register(struct aie_device *aie);
 void amdxdna_async_events_free(struct aie_device *aie);
 bool amdxdna_async_events_queue_work(struct aie_device *aie, struct work_struct *work);
 int amdxdna_get_array_last_async_error(struct aie_device *aie,
