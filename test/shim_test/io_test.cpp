@@ -16,6 +16,7 @@
 #include "core/include/ert.h"
 #include "xrt/detail/xclbin.h"
 #include "hwq.h"
+#include <atomic>
 #include <fstream>
 #include <sstream>
 #include <string>
@@ -1327,6 +1328,80 @@ TEST_tdr_not_yet_published_retried(device::id_type id, std::shared_ptr<device>& 
     throw std::runtime_error(std::string("recovered submit state=") +
       std::to_string(state) + ", expected COMPLETED=" +
       std::to_string(ERT_CMD_STATE_COMPLETED));
+}
+
+/*
+ * A context error resets the faulting context while another context keeps
+ * the device busy. bad_timeout hangs CERT on one context while a second
+ * context keeps completing good jobs, so the driver's job timeout, which
+ * fires only when the whole device makes no progress, stays quiet. The
+ * faulting context is then reset only through the firmware report: an async
+ * event buffer on classic, a firmware notification on a VF. It must be
+ * reported ERT_CMD_STATE_TIMEOUT within arg[0] ms, below the driver's job
+ * timeout, and every job on the busy context must complete.
+ */
+void
+TEST_tdr_ctx_error_while_busy(device::id_type id, std::shared_ptr<device>& sdev, arg_type& arg)
+{
+  auto dev = sdev.get();
+  const auto deadline = std::chrono::milliseconds(arg[0]);
+  hw_ctx bad_ctx{dev, "good"};
+  hw_ctx busy_ctx{dev, "good"};
+
+  async_error_aie4_io_test_bo_set bad{dev, "bad_timeout"};
+  bad.init_cmd(bad_ctx, false);
+  bad.sync_before_run();
+
+  auto good = create_bo_set_for_device(dev, false, "good");
+  good->init_cmd(busy_ctx, false);
+  good->sync_before_run();
+
+  const auto start = std::chrono::steady_clock::now();
+  std::atomic<bool> bad_done{false};
+  std::exception_ptr busy_err;
+  int busy_runs = 0;
+
+  // Keep the device busy past the deadline, unless the reset comes first.
+  std::thread busy([&] {
+    try {
+      while (!bad_done && std::chrono::steady_clock::now() - start < 2 * deadline) {
+        good->run_on_ctx(busy_ctx);
+        busy_runs++;
+      }
+    } catch (...) {
+      busy_err = std::current_exception();
+    }
+  });
+
+  auto hwq = bad_ctx.get()->get_hw_queue();
+  auto *bad_bo = bad.get_bos()[IO_TEST_BO_CMD].tbo.get();
+  hwq->submit_command(bad_bo->get());
+  hwq->wait_command(bad_bo->get(), 0);
+  auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+    std::chrono::steady_clock::now() - start);
+  bad_done = true;
+  busy.join();
+
+  if (busy_err)
+    std::rethrow_exception(busy_err);
+
+  auto state = reinterpret_cast<ert_packet *>(bad_bo->map())->state;
+  if (state != ERT_CMD_STATE_TIMEOUT)
+    throw std::runtime_error(std::string("faulting context state=") +
+      std::to_string(state) + ", expected TIMEOUT=" +
+      std::to_string(ERT_CMD_STATE_TIMEOUT));
+
+  if (!busy_runs)
+    throw std::runtime_error("busy context completed no job while the other context hung");
+
+  if (elapsed > deadline)
+    throw std::runtime_error("faulting context reset after " +
+      std::to_string(elapsed.count()) + " ms, over " +
+      std::to_string(deadline.count()) + " ms: firmware report was not handled");
+
+  bad.verify_result();
+  std::cout << "  faulting context reset after " << elapsed.count()
+            << " ms, busy context ran " << busy_runs << " jobs" << std::endl;
 }
 
 /*

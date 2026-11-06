@@ -75,6 +75,7 @@ void TEST_async_error_aie4_io(device::id_type id, std::shared_ptr<device>& sdev,
 void TEST_tdr_timeout_and_abort(device::id_type id, std::shared_ptr<device>& sdev, arg_type& arg);
 void TEST_tdr_partial_chain_abort(device::id_type id, std::shared_ptr<device>& sdev, arg_type& arg);
 void TEST_tdr_not_yet_published_retried(device::id_type id, std::shared_ptr<device>& sdev, arg_type& arg);
+void TEST_tdr_ctx_error_while_busy(device::id_type id, std::shared_ptr<device>& sdev, arg_type& arg);
 void TEST_async_error_multi(device::id_type id, std::shared_ptr<device>& sdev, arg_type& arg);
 void TEST_instr_invalid_addr_io(device::id_type id, std::shared_ptr<device>& sdev, arg_type& arg);
 void TEST_io_latency(device::id_type, std::shared_ptr<device>&, arg_type&);
@@ -1591,6 +1592,9 @@ std::vector<test_case> test_list {
   },
   test_case{ "io test TDR: not-yet-published submit is retried across reset", {},
     TEST_POSITIVE, {npu3, npu3vf, npu12}, {}, TEST_tdr_not_yet_published_retried, {}
+  },
+  test_case{ "io test TDR: context error resets one context while another is busy", {},
+    TEST_POSITIVE, {npu3, npu3vf}, {}, TEST_tdr_ctx_error_while_busy, { 8000 }
   },
   test_case{ "io test real kernel good run", {},
     TEST_POSITIVE, {npu1, npu4, npu3, npu3vf, ve2, npu12}, {}, TEST_io, { IO_TEST_NORMAL_RUN, 1 }
