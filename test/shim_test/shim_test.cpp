@@ -1486,6 +1486,87 @@ TEST_query_frame_boundary_preempt(device::id_type id, std::shared_ptr<device>& s
     throw std::runtime_error("aie4 GET_FRAME_BOUNDARY_PREEMPT_STATE expected enabled");
 }
 
+// Read DRM_AMDXDNA_GET_FORCE_PREEMPT_STATE through a fresh fd (see fork_query).
+static attribute_state_probe
+get_force_preempt(device* dev)
+{
+  return fork_query<attribute_state_probe>(dev, [](int fd) {
+    amdxdna_drm_attribute_state state{};
+    amdxdna_drm_get_info info = {
+      .param = DRM_AMDXDNA_GET_FORCE_PREEMPT_STATE,
+      .buffer_size = sizeof(state),
+      .buffer = reinterpret_cast<uintptr_t>(&state),
+    };
+
+    attribute_state_probe r{};
+    r.ret = ::ioctl(fd, DRM_IOCTL_AMDXDNA_GET_INFO, &info);
+    r.err = errno;
+    r.state = state.state;
+    return r;
+  });
+}
+
+// Write DRM_AMDXDNA_SET_FORCE_PREEMPT through a fresh fd; the ioctl is root only.
+static attribute_state_probe
+set_force_preempt(device* dev, uint8_t on)
+{
+  return fork_query<attribute_state_probe>(dev, [on](int fd) {
+    amdxdna_drm_attribute_state state{};
+    state.state = on;
+    amdxdna_drm_set_state set = {
+      .param = DRM_AMDXDNA_SET_FORCE_PREEMPT,
+      .buffer_size = sizeof(state),
+      .buffer = reinterpret_cast<uintptr_t>(&state),
+    };
+
+    attribute_state_probe r{};
+    r.ret = ::ioctl(fd, DRM_IOCTL_AMDXDNA_SET_STATE, &set);
+    r.err = errno;
+    r.state = on;
+    return r;
+  });
+}
+
+/*
+ * Force preemption is a setting of the classic or PF device. Turn it on,
+ * check that it reads back and that jobs still complete while firmware
+ * preempts at every preemption point, then turn it off and check again.
+ */
+void
+TEST_force_preempt_state(device::id_type id, std::shared_ptr<device>& sdev, arg_type& arg)
+{
+  auto dev = sdev.get();
+
+  auto set = [dev](uint8_t on) {
+    auto p = set_force_preempt(dev, on);
+    if (p.ret == -1)
+      throw std::runtime_error("ioctl(SET_FORCE_PREEMPT) failed: " +
+        std::string(std::strerror(p.err)));
+  };
+  auto check = [dev](uint8_t expect) {
+    auto p = get_force_preempt(dev);
+    if (p.ret == -1)
+      throw std::runtime_error("ioctl(GET_FORCE_PREEMPT_STATE) failed: " +
+        std::string(std::strerror(p.err)));
+    if (p.state != expect)
+      throw std::runtime_error("force preemption state " + std::to_string(p.state) +
+        ", expected " + std::to_string(expect));
+  };
+
+  set(1);
+  try {
+    check(1);
+    // Only a preemptible ELF can run while every preemption point preempts.
+    TEST_preempt_full_elf_io(id, sdev, { IO_TEST_NORMAL_RUN, 8 });
+  } catch (...) {
+    // The setting is device wide and sticky; do not leave it on.
+    set_force_preempt(dev, 0);
+    throw;
+  }
+  set(0);
+  check(0);
+}
+
 // List of all test cases
 std::vector<test_case> test_list {
   test_case{ "get_xrt_info", {},
@@ -1864,6 +1945,8 @@ std::vector<test_case> test_list {
   },
   test_case{ "debug bo sync after suspend", {},
     TEST_POSITIVE, {npu1, npu4}, {amdxdna}, TEST_debug_bo_after_suspend, { 0x1000 }
+  },  test_case{ "force preemption state set, get and good run", {},
+    TEST_POSITIVE, {npu3}, {amdxdna}, TEST_force_preempt_state, {}
   },
 };
 
