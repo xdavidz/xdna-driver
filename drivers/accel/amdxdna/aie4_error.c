@@ -50,13 +50,19 @@ static enum amdxdna_error_num aie4_ctx_error_num(u32 error_type)
 	}
 }
 
-static struct amdxdna_hwctx *hw_ctx_id2hwctx(struct aie_device *aie, u32 hw_ctx_id,
-					     int *srcu_idx)
+/*
+ * Call fn on the context with firmware ID hw_ctx_id, inside its client's
+ * hwctx_srcu read section. Return false if there is no such context.
+ */
+static bool aie4_hwctx_call(struct aie_device *aie, u32 hw_ctx_id,
+			    void (*fn)(struct amdxdna_hwctx *hwctx, void *arg),
+			    void *arg)
 {
 	struct amdxdna_dev *xdna = aie->xdna;
 	struct amdxdna_client *client;
 	struct amdxdna_hwctx *hwctx;
 	unsigned long hwctx_idx;
+	bool found = false;
 	int idx;
 
 	drm_WARN_ON(&xdna->ddev, !mutex_is_locked(&xdna->dev_lock));
@@ -64,65 +70,67 @@ static struct amdxdna_hwctx *hw_ctx_id2hwctx(struct aie_device *aie, u32 hw_ctx_
 		idx = srcu_read_lock(&client->hwctx_srcu);
 		amdxdna_for_each_hwctx(client, hwctx_idx, hwctx) {
 			if (hwctx->priv && hwctx->priv->hw_ctx_id == hw_ctx_id) {
-				/* Released by the caller. */
-				*srcu_idx = idx;
-				return hwctx;
+				fn(hwctx, arg);
+				found = true;
+				break;
 			}
 		}
 		srcu_read_unlock(&client->hwctx_srcu, idx);
+		if (found)
+			return true;
 	}
 	XDNA_WARN(xdna, "Could not find context for hw_ctx_id=%u", hw_ctx_id);
-	return NULL;
+	return false;
 }
 
 /*
  * When a critical context error occurs, find the matching context and reset it
  * by destroying then recreating it.
  */
+static void aie4_ctx_reset_cb(struct amdxdna_hwctx *hwctx, void *arg)
+{
+	struct amdxdna_dev *xdna = hwctx->client->xdna;
+	int ret;
+
+	/*
+	 * Firmware can only dump a context that still exists, so capture
+	 * before the destroy below invalidates fw_ctx_id. A single fault
+	 * raises this path more than once (device event plus one
+	 * notification per reporting uC), and only the first dump runs
+	 * before the context is torn down, so keep it rather than
+	 * replacing it with a later failure. GET_ARRAY consumes it.
+	 */
+	if (xdna->auto_coredump && !hwctx->coredump) {
+		char *dump = amdxdna_get_hwctx_coredump(hwctx);
+
+		if (IS_ERR(dump))
+			XDNA_ERR(xdna, "Failed to get core dump on ctx error: %ld",
+				 PTR_ERR(dump));
+		else
+			hwctx->coredump = dump;
+	}
+
+	/*
+	 * TDR reset: ERROR destroys the fw context and marks it reset
+	 * (has_reset), so the job worker times out the faulting job and
+	 * aborts the rest; wait_for_running then blocks until that drain
+	 * completes before the context is recreated.
+	 */
+	aie4_hwctx_destroy(hwctx, AIE4_HWCTX_ERROR);
+	aie4_hwctx_wait_for_running(hwctx);
+
+	ret = aie4_hwctx_create(hwctx);
+	if (ret)
+		XDNA_ERR(xdna, "Reset hw_ctx_id=%u ctx failed, ret %d",
+			 hwctx->priv->hw_ctx_id, ret);
+}
+
 static void aie4_ctx_reset(struct aie_device *aie, u32 hw_ctx_id)
 {
 	struct amdxdna_dev *xdna = aie->xdna;
-	struct amdxdna_hwctx *hwctx;
-	int ret, idx;
 
 	mutex_lock(&xdna->dev_lock);
-
-	hwctx = hw_ctx_id2hwctx(aie, hw_ctx_id, &idx);
-	if (hwctx) {
-		/*
-		 * Firmware can only dump a context that still exists, so capture
-		 * before the destroy below invalidates fw_ctx_id. A single fault
-		 * raises this path more than once (device event plus one
-		 * notification per reporting uC), and only the first dump runs
-		 * before the context is torn down, so keep it rather than
-		 * replacing it with a later failure. GET_ARRAY consumes it.
-		 */
-		if (xdna->auto_coredump && !hwctx->coredump) {
-			char *dump = amdxdna_get_hwctx_coredump(hwctx);
-
-			if (IS_ERR(dump))
-				XDNA_ERR(xdna, "Failed to get core dump on ctx error: %ld",
-					 PTR_ERR(dump));
-			else
-				hwctx->coredump = dump;
-		}
-
-		/*
-		 * TDR reset: ERROR destroys the fw context and marks it reset
-		 * (has_reset), so the job worker times out the faulting job and
-		 * aborts the rest; wait_for_running then blocks until that drain
-		 * completes before the context is recreated.
-		 */
-		aie4_hwctx_destroy(hwctx, AIE4_HWCTX_ERROR);
-		aie4_hwctx_wait_for_running(hwctx);
-
-		ret = aie4_hwctx_create(hwctx);
-		if (ret)
-			XDNA_ERR(xdna, "Reset hw_ctx_id=%u ctx failed, ret %d",
-				 hw_ctx_id, ret);
-		srcu_read_unlock(&hwctx->client->hwctx_srcu, idx);
-	}
-
+	aie4_hwctx_call(aie, hw_ctx_id, aie4_ctx_reset_cb, NULL);
 	mutex_unlock(&xdna->dev_lock);
 }
 
@@ -197,6 +205,34 @@ static void aie4_log_ctx_health_report(struct amdxdna_dev *xdna,
 	}
 }
 
+/*
+ * Cache the full report on a kernel-mode context so the timeout/recovery
+ * path can attach it to the failing command; an empty report when arg is
+ * NULL. Only kernel-mode contexts consume it and have an initialized io_lock,
+ * which serializes this multi-word write against that reader.
+ */
+static void aie4_cache_ctx_error_cb(struct amdxdna_hwctx *hwctx, void *arg)
+{
+	struct amdxdna_hwctx_priv *priv = hwctx->priv;
+	struct aie4_async_ctx_error *ctx_err = arg;
+
+	if (!priv->kernel_submit)
+		return;
+
+	mutex_lock(&priv->io_lock);
+	if (ctx_err)
+		memcpy(&priv->cached_ctx_error, ctx_err, sizeof(*ctx_err));
+	else
+		memset(&priv->cached_ctx_error, 0, sizeof(priv->cached_ctx_error));
+	/*
+	 * Mark a ctx error cached: the ensuing ERROR teardown sets has_reset,
+	 * so the job worker reports the faulting job as TIMEOUT with this
+	 * health report attached (and aborts the rest).
+	 */
+	priv->cached_ctx_error_valid = true;
+	mutex_unlock(&priv->io_lock);
+}
+
 static void aie4_async_ctx_error_cache(struct aie_device *aie,
 				       struct aie4_async_ctx_error *ctx_err)
 {
@@ -204,10 +240,8 @@ static void aie4_async_ctx_error_cache(struct aie_device *aie,
 	struct aie4_msg_app_health_report *health = &ctx_err->app_health_report;
 	struct amdxdna_async_error *record = &aie->last_async_err;
 	struct amdxdna_dev *xdna = aie->xdna;
-	struct amdxdna_hwctx *hwctx;
 	u32 ctx_status;
 	u32 num_uc;
-	int idx;
 
 	ctx_status = FIELD_GET(AIE4_APP_HEALTH_CTX_STATUS, health->ctx_num_uc);
 	num_uc = FIELD_GET(AIE4_APP_HEALTH_NUM_UC, health->ctx_num_uc);
@@ -232,30 +266,10 @@ static void aie4_async_ctx_error_cache(struct aie_device *aie,
 	record->ex_err_code = AMDXDNA_EXTRA_ERR_CTX_ENCODE(ctx_status, ctx_err->ctx_id);
 
 	/*
-	 * Cache the full report on the owning kernel-mode context so the
-	 * timeout/recovery path can attach it to the failing command. Only
-	 * kernel-mode contexts consume it and have an initialized io_lock, which
-	 * serializes this multi-word write against that reader. The device-level
-	 * last_async_err above stays unconditional so GET_ARRAY works for all
-	 * contexts.
+	 * The device-level last_async_err above stays unconditional so
+	 * GET_ARRAY works for all contexts.
 	 */
-	hwctx = hw_ctx_id2hwctx(aie, ctx_err->ctx_id, &idx);
-	if (hwctx) {
-		struct amdxdna_hwctx_priv *priv = hwctx->priv;
-
-		if (priv->kernel_submit) {
-			mutex_lock(&priv->io_lock);
-			memcpy(&priv->cached_ctx_error, ctx_err, sizeof(*ctx_err));
-			/*
-			 * Mark a ctx error cached: the ensuing ERROR teardown sets
-			 * has_reset, so the job worker reports the faulting job as
-			 * TIMEOUT with this health report attached (and aborts the rest).
-			 */
-			priv->cached_ctx_error_valid = true;
-			mutex_unlock(&priv->io_lock);
-		}
-		srcu_read_unlock(&hwctx->client->hwctx_srcu, idx);
-	}
+	aie4_hwctx_call(aie, ctx_err->ctx_id, aie4_cache_ctx_error_cb, ctx_err);
 	mutex_unlock(&xdna->dev_lock);
 }
 
@@ -321,8 +335,6 @@ static void aie4_async_note_ctx_error_recover(struct aie_device *aie, u32 ctx_id
 {
 	struct amdxdna_async_error *record = &aie->last_async_err;
 	struct amdxdna_dev *xdna = aie->xdna;
-	struct amdxdna_hwctx *hwctx;
-	int idx;
 
 	mutex_lock(&xdna->dev_lock);
 	record->err_code = AMDXDNA_ERROR_ENCODE(AMDXDNA_ERROR_NUM_KDS_EXEC,
@@ -330,18 +342,7 @@ static void aie4_async_note_ctx_error_recover(struct aie_device *aie, u32 ctx_id
 	record->ts_us = ktime_to_us(ktime_get_real());
 	record->ex_err_code = AMDXDNA_EXTRA_ERR_CTX_ENCODE(0, ctx_id);
 
-	hwctx = hw_ctx_id2hwctx(aie, ctx_id, &idx);
-	if (hwctx) {
-		struct amdxdna_hwctx_priv *priv = hwctx->priv;
-
-		if (priv->kernel_submit) {
-			mutex_lock(&priv->io_lock);
-			memset(&priv->cached_ctx_error, 0, sizeof(priv->cached_ctx_error));
-			priv->cached_ctx_error_valid = true;
-			mutex_unlock(&priv->io_lock);
-		}
-		srcu_read_unlock(&hwctx->client->hwctx_srcu, idx);
-	}
+	aie4_hwctx_call(aie, ctx_id, aie4_cache_ctx_error_cb, NULL);
 	mutex_unlock(&xdna->dev_lock);
 
 	aie4_ctx_reset(aie, ctx_id);
