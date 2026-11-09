@@ -8,6 +8,7 @@
 #include "xrt/detail/xrt_error_code.h"
 #include "core/common/query_requests.h"
 
+#include <algorithm>
 #include <chrono>
 #include <climits>
 #include <cstdint>
@@ -69,6 +70,9 @@ verify_aie_async_error(const device* dev, uint64_t expect_err_code,
 
 // ert_uc_health_info::misc_status bit 1, see xrt/detail/ert.h.
 const uint32_t uc_misc_status_ctrl_code_hang = 0x2;
+// AIE4_MPNPUFW_MAX_UC_COUNT in aie4_msg_priv.h. num_uc comes from the
+// command buffer, so bound it before using it to index uc_info.
+const uint32_t aie4_max_num_uc = 6;
 
 void
 dump_aie4_ctx_health(const ert_ctx_health_data_v1* cdata)
@@ -77,7 +81,7 @@ dump_aie4_ctx_health(const ert_ctx_health_data_v1* cdata)
   std::cerr << "\tContext state: " << cdata->aie4.ctx_state << "\n";
   std::cerr << "\tActive uC count: " << cdata->aie4.num_uc << "\n";
   std::cerr << "\tContext error type: " << cdata->aie4.ctx_error_type << "\n";
-  for (uint32_t i = 0; i < cdata->aie4.num_uc; i++) {
+  for (uint32_t i = 0; i < std::min(cdata->aie4.num_uc, aie4_max_num_uc); i++) {
     const auto& uc = cdata->aie4.uc_info[i];
     std::cerr << "\tuC[" << i << "]: idx: " << uc.uc_idx
               << " fw_state: " << uc.fw_state
@@ -100,7 +104,7 @@ verify_aie4_timeout_ctx_health(const ert_ctx_health_data_v1* cdata, uint32_t exp
 
   // Firmware reports the hang against the uC that was running the control
   // code, so scan rather than assuming a fixed index or uC count.
-  for (uint32_t i = 0; i < cdata->aie4.num_uc; i++) {
+  for (uint32_t i = 0; i < std::min(cdata->aie4.num_uc, aie4_max_num_uc); i++) {
     if (cdata->aie4.uc_info[i].misc_status & uc_misc_status_ctrl_code_hang)
       return;
   }
@@ -717,6 +721,7 @@ elf_io_negative_test_bo_set(device* dev, const std::string& tag)
   }
 
   m_is_aie4 = dev_filter_is_aie4(0, dev);
+  m_is_vf = dev_filter_is_npu3vf(0, dev);
   m_is_full_elf = (info.flow == FULL_ELF);
 
   // Expected code for the driver-synthesized AIE async error on an aie4 fault.
@@ -1196,8 +1201,10 @@ verify_result()
     // cached context error and the async error is all there is to assert.
     verify_aie_async_error(m_dev, m_expect_err_code, m_last_err_timestamp);
 
-    // A CERT context timeout does come with a report.
-    if (m_expect_ctx_error_type != no_ctx_error_type) {
+    // A CERT context timeout does come with a report, except on a VF: a VF
+    // registers no async event buffers, so firmware sends only a notification
+    // and there is no health data to check.
+    if (m_expect_ctx_error_type != no_ctx_error_type && !m_is_vf) {
       auto cdata = reinterpret_cast<ert_ctx_health_data_v1 *>(cpkt->data);
       verify_aie4_timeout_ctx_health(cdata, m_expect_ctx_error_type);
     }
