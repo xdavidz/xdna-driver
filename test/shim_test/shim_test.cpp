@@ -1944,8 +1944,9 @@ std::vector<test_case> test_list {
     TEST_POSITIVE, {npu1, npu4, npu3, npu3vf, npu12}, {amdxdna}, TEST_create_uptr_bo_from_mapped_bo, {}
   },
   test_case{ "debug bo sync after suspend", {},
-    TEST_POSITIVE, {npu1, npu4}, {amdxdna}, TEST_debug_bo_after_suspend, { 0x1000 }
-  },  test_case{ "force preemption state set, get and good run", {},
+    TEST_POSITIVE, {npu1, npu4, npu3}, {amdxdna}, TEST_debug_bo_after_suspend, { 0x1000 }
+  },
+  test_case{ "force preemption state set, get and good run", {},
     TEST_POSITIVE, {npu3}, {amdxdna}, TEST_force_preempt_state, {}
   },
 };
