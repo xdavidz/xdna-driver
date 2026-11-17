@@ -448,6 +448,8 @@ int aie4_hwctx_create(struct amdxdna_hwctx *hwctx)
 		WRITE_ONCE(priv->cert_comp, cert_comp);
 		mutex_unlock(&priv->io_lock);
 		hwctx->doorbell_offset = resp.doorbell_offset;
+		/* Reconnected: release aie4_cmd_wait() callers parked on it. */
+		wake_up_all(&priv->job_list_wq);
 	}
 
 	return 0;
@@ -910,6 +912,8 @@ int aie4_hwctx_init(struct amdxdna_hwctx *hwctx)
 	 * NULL: disconnected until create links it.
 	 */
 	mutex_init(&priv->io_lock);
+	/* aie4_cmd_wait() waits here for a reconnect in both submission modes. */
+	init_waitqueue_head(&priv->job_list_wq);
 
 	/*
 	 * Kernel-mode submission: the driver fills the queue and rings the
@@ -919,7 +923,6 @@ int aie4_hwctx_init(struct amdxdna_hwctx *hwctx)
 	if (priv->kernel_submit) {
 		INIT_LIST_HEAD(&priv->pending_job_list);
 		INIT_LIST_HEAD(&priv->running_job_list);
-		init_waitqueue_head(&priv->job_list_wq);
 		INIT_WORK(&priv->job_work, job_worker);
 		priv->job_work_q = alloc_ordered_workqueue("%s", 0, hwctx->name);
 		if (!priv->job_work_q) {
@@ -1085,29 +1088,36 @@ static bool check_cmd_done(struct amdxdna_hwctx *hwctx, u64 seq, struct cert_com
 
 int aie4_cmd_wait(struct amdxdna_hwctx *hwctx, u64 seq, u32 timeout)
 {
-	unsigned long wait_jifs = MAX_SCHEDULE_TIMEOUT;
-	struct cert_comp *cert_comp = aie4_get_cert_comp(hwctx);
+	long wait_jifs = timeout ? msecs_to_jiffies(timeout) : MAX_SCHEDULE_TIMEOUT;
+	struct amdxdna_hwctx_priv *priv = hwctx->priv;
+	struct cert_comp *cert_comp;
 	long ret;
 
-	if (!cert_comp)
-		return -EAGAIN;
+again:
+	cert_comp = aie4_get_cert_comp(hwctx);
+	if (cert_comp) {
+		ret = wait_event_interruptible_timeout(cert_comp->waitq,
+						       check_cmd_done(hwctx, seq, cert_comp),
+						       wait_jifs);
+		aie4_put_cert_comp(cert_comp);
+	} else {
+		/* Disconnected by a reset or suspend: wait for the reconnect. */
+		ret = wait_event_interruptible_timeout(priv->job_list_wq,
+						       get_read_index(hwctx) > seq ||
+						       aie4_hwctx_connected(hwctx),
+						       wait_jifs);
+	}
 
-	if (timeout)
-		wait_jifs = msecs_to_jiffies(timeout);
-
-	ret = wait_event_interruptible_timeout(cert_comp->waitq,
-					       check_cmd_done(hwctx, seq, cert_comp),
-					       wait_jifs);
-
+	if (ret < 0)
+		return ret;
+	if (get_read_index(hwctx) > seq)
+		return 0;
 	if (!ret)
-		ret = -ETIME;
-	else if (ret > 0 && get_read_index(hwctx) <= seq)
-		/* Woke on disconnect/reset, not on real completion. */
-		ret = -EAGAIN;
+		return -ETIME;
 
-	aie4_put_cert_comp(cert_comp);
-
-	return ret <= 0 ? ret : 0;
+	/* Woken by a disconnect or reconnect: keep waiting with the time left. */
+	wait_jifs = ret;
+	goto again;
 }
 
 /* ---- kernel-mode submission (driver fills the queue and rings doorbell) ---- */
