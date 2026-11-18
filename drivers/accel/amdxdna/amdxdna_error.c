@@ -59,6 +59,7 @@ struct amdxdna_async_event_resp {
  * @addr: DMA address of the report buffer.
  * @size: report buffer size.
  * @resp: last mailbox response (status and event type) for this slot.
+ * @ctx_gen: aie_device ctx_gen when the report arrived.
  */
 struct amdxdna_async_event {
 	struct aie_device		*aie;
@@ -69,6 +70,7 @@ struct amdxdna_async_event {
 	dma_addr_t			addr;
 	u32				size;
 	struct amdxdna_async_event_resp	resp;
+	u64				ctx_gen;
 };
 
 /**
@@ -329,6 +331,8 @@ static int amdxdna_async_error_cb(void *handle, void __iomem *data, size_t size)
 	struct amdxdna_async_event *e = handle;
 
 	if (data) {
+		/* Contexts created after this report are not the one it is about. */
+		e->ctx_gen = READ_ONCE(e->aie->ctx_gen);
 		e->resp.type = readl(data + offsetof(struct amdxdna_async_event_resp, type));
 		wmb(); /* Update status in the end, so that no lock for here */
 		e->resp.status = readl(data + offsetof(struct amdxdna_async_event_resp, status));
@@ -398,7 +402,7 @@ static void amdxdna_async_event_rearm(struct amdxdna_async_event *e)
  * maintenance.
  */
 static void amdxdna_async_event_decode(struct amdxdna_async_event *e, u32 type,
-				       void *report, u32 size)
+				       u64 ctx_gen, void *report, u32 size)
 {
 	const struct amdxdna_dev_info *info = e->aie->xdna->dev_info;
 	struct aie_device *aie = e->aie;
@@ -407,7 +411,7 @@ static void amdxdna_async_event_decode(struct amdxdna_async_event *e, u32 type,
 
 	/* Call the device handler without dev_lock; it may take dev_lock itself. */
 	if (info->ops->handle_dev_async_event &&
-	    info->ops->handle_dev_async_event(aie, type, report))
+	    info->ops->handle_dev_async_event(aie, type, report, ctx_gen))
 		return;
 
 	amdxdna_aie_decode_tile_error(aie, report, size);
@@ -419,6 +423,7 @@ static void amdxdna_async_error_worker(struct work_struct *err_work)
 	const struct amdxdna_dev_info *info = e->aie->xdna->dev_info;
 	struct amdxdna_dev *xdna = e->aie->xdna;
 	u32 status = e->resp.status;
+	u64 ctx_gen;
 	u32 size;
 	u32 type;
 
@@ -440,6 +445,7 @@ static void amdxdna_async_error_worker(struct work_struct *err_work)
 
 	/* Once the slot is re-armed, firmware may overwrite resp.type. */
 	type = e->resp.type;
+	ctx_gen = e->ctx_gen;
 	size = amdxdna_async_event_take_report(e);
 
 	/*
@@ -464,7 +470,7 @@ static void amdxdna_async_error_worker(struct work_struct *err_work)
 	 * decode, so a bad report does not cost a slot for good.
 	 */
 	amdxdna_async_event_rearm(e);
-	amdxdna_async_event_decode(e, type, e->events->scratch, size);
+	amdxdna_async_event_decode(e, type, ctx_gen, e->events->scratch, size);
 }
 
 /**
@@ -658,6 +664,17 @@ bool amdxdna_async_events_queue_work(struct aie_device *aie, struct work_struct 
 
 	queue_work(events->wq, work);
 	return true;
+}
+
+/*
+ * Whether the pool is armed, between hw start and hw stop. A worker that
+ * runs while fini() drains it handles an event from a stopped channel.
+ * Caller must hold dev_lock.
+ */
+bool amdxdna_async_events_armed(struct aie_device *aie)
+{
+	drm_WARN_ON(&aie->xdna->ddev, !mutex_is_locked(&aie->xdna->dev_lock));
+	return aie->async_events && aie->async_events->armed;
 }
 
 /**

@@ -389,6 +389,9 @@ int aie4_hwctx_create(struct amdxdna_hwctx *hwctx)
 	}
 
 	priv->hw_ctx_id = resp.hw_context_id;
+	/* Firmware reuses context IDs; let error handlers skip newer contexts. */
+	WRITE_ONCE(ndev->aie.ctx_gen, ndev->aie.ctx_gen + 1);
+	priv->gen = ndev->aie.ctx_gen;
 
 	/*
 	 * Mirror the firmware hardware context id onto the common hwctx so the

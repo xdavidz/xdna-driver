@@ -114,7 +114,8 @@ struct amdxdna_dev_ops {
 	 * the shared AIE tile error decode is skipped; false to let the caller
 	 * run the shared tile decode.
 	 */
-	bool (*handle_dev_async_event)(struct aie_device *aie, u32 type, void *vaddr);
+	bool (*handle_dev_async_event)(struct aie_device *aie, u32 type, void *vaddr,
+				       u64 ctx_gen);
 };
 
 struct amdxdna_fw_feature_tbl {

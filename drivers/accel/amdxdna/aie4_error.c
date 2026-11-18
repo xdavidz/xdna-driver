@@ -52,10 +52,11 @@ static enum amdxdna_error_num aie4_ctx_error_num(u32 error_type)
 }
 
 /*
- * Call fn on the context with firmware ID hw_ctx_id, inside its client's
- * hwctx_srcu read section. Return false if there is no such context.
+ * Call fn on the context with firmware ID hw_ctx_id that existed at context
+ * generation ctx_gen, inside its client's hwctx_srcu read section. Skip an
+ * event from a stopped channel. Return false if there is no such context.
  */
-static bool aie4_hwctx_call(struct aie_device *aie, u32 hw_ctx_id,
+static bool aie4_hwctx_call(struct aie_device *aie, u32 hw_ctx_id, u64 ctx_gen,
 			    void (*fn)(struct amdxdna_hwctx *hwctx, void *arg),
 			    void *arg)
 {
@@ -67,10 +68,15 @@ static bool aie4_hwctx_call(struct aie_device *aie, u32 hw_ctx_id,
 	int idx;
 
 	drm_WARN_ON(&xdna->ddev, !mutex_is_locked(&xdna->dev_lock));
+	if (!amdxdna_async_events_armed(aie)) {
+		XDNA_DBG(xdna, "Skip hw_ctx_id=%u event from a stopped channel", hw_ctx_id);
+		return false;
+	}
 	amdxdna_for_each_client(xdna, client) {
 		idx = srcu_read_lock(&client->hwctx_srcu);
 		amdxdna_for_each_hwctx(client, hwctx_idx, hwctx) {
-			if (hwctx->priv && hwctx->priv->hw_ctx_id == hw_ctx_id) {
+			if (hwctx->priv && hwctx->priv->hw_ctx_id == hw_ctx_id &&
+			    hwctx->priv->gen <= ctx_gen) {
 				fn(hwctx, arg);
 				found = true;
 				break;
@@ -126,12 +132,12 @@ static void aie4_ctx_reset_cb(struct amdxdna_hwctx *hwctx, void *arg)
 			 hwctx->priv->hw_ctx_id, ret);
 }
 
-static void aie4_ctx_reset(struct aie_device *aie, u32 hw_ctx_id)
+static void aie4_ctx_reset(struct aie_device *aie, u32 hw_ctx_id, u64 ctx_gen)
 {
 	struct amdxdna_dev *xdna = aie->xdna;
 
 	mutex_lock(&xdna->dev_lock);
-	aie4_hwctx_call(aie, hw_ctx_id, aie4_ctx_reset_cb, NULL);
+	aie4_hwctx_call(aie, hw_ctx_id, ctx_gen, aie4_ctx_reset_cb, NULL);
 	mutex_unlock(&xdna->dev_lock);
 }
 
@@ -235,7 +241,7 @@ static void aie4_cache_ctx_error_cb(struct amdxdna_hwctx *hwctx, void *arg)
 }
 
 static void aie4_async_ctx_error_cache(struct aie_device *aie,
-				       struct aie4_async_ctx_error *ctx_err)
+				       struct aie4_async_ctx_error *ctx_err, u64 ctx_gen)
 {
 	enum amdxdna_error_num err_num = aie4_ctx_error_num(ctx_err->error_type);
 	struct aie4_msg_app_health_report *health = &ctx_err->app_health_report;
@@ -270,7 +276,7 @@ static void aie4_async_ctx_error_cache(struct aie_device *aie,
 	 * The device-level last_async_err above stays unconditional so
 	 * GET_ARRAY works for all contexts.
 	 */
-	aie4_hwctx_call(aie, ctx_err->ctx_id, aie4_cache_ctx_error_cb, ctx_err);
+	aie4_hwctx_call(aie, ctx_err->ctx_id, ctx_gen, aie4_cache_ctx_error_cb, ctx_err);
 	mutex_unlock(&xdna->dev_lock);
 }
 
@@ -279,7 +285,7 @@ static void aie4_async_ctx_error_cache(struct aie_device *aie,
  * when the event was consumed here (the shared AIE tile decode is then skipped),
  * false to let the caller run the shared tile decode.
  */
-bool aie4_handle_dev_event(struct aie_device *aie, u32 type, void *vaddr)
+bool aie4_handle_dev_event(struct aie_device *aie, u32 type, void *vaddr, u64 ctx_gen)
 {
 	struct amdxdna_dev *xdna = aie->xdna;
 	struct aie4_async_ctx_error *ctx_err;
@@ -293,8 +299,8 @@ bool aie4_handle_dev_event(struct aie_device *aie, u32 type, void *vaddr)
 		XDNA_DBG(xdna, "Context error: ctx_id: %u error_type: %u",
 			 ctx_err->ctx_id, ctx_err->error_type);
 		/* Cache the error/health first, then recover the context. */
-		aie4_async_ctx_error_cache(aie, ctx_err);
-		aie4_ctx_reset(aie, ctx_err->ctx_id);
+		aie4_async_ctx_error_cache(aie, ctx_err, ctx_gen);
+		aie4_ctx_reset(aie, ctx_err->ctx_id, ctx_gen);
 		return true;
 	default:
 		XDNA_WARN(xdna, "Unhandled/unknown async event type %u, skipping", type);
@@ -332,7 +338,8 @@ static const char *aie4_async_note_str(u32 event_id)
  * report-carrying path produces for CTX_ERR_AIE_FAILURE. Runs on the
  * async-event ordered workqueue, like the report-carrying handler.
  */
-static void aie4_async_note_ctx_error_recover(struct aie_device *aie, u32 ctx_id)
+static void aie4_async_note_ctx_error_recover(struct aie_device *aie, u32 ctx_id,
+					      u64 ctx_gen)
 {
 	struct amdxdna_async_error *record = &aie->last_async_err;
 	struct amdxdna_dev *xdna = aie->xdna;
@@ -343,10 +350,10 @@ static void aie4_async_note_ctx_error_recover(struct aie_device *aie, u32 ctx_id
 	record->ts_us = ktime_to_us(ktime_get_real());
 	record->ex_err_code = AMDXDNA_EXTRA_ERR_CTX_ENCODE(0, ctx_id);
 
-	aie4_hwctx_call(aie, ctx_id, aie4_cache_ctx_error_cb, NULL);
+	aie4_hwctx_call(aie, ctx_id, ctx_gen, aie4_cache_ctx_error_cb, NULL);
 	mutex_unlock(&xdna->dev_lock);
 
-	aie4_ctx_reset(aie, ctx_id);
+	aie4_ctx_reset(aie, ctx_id, ctx_gen);
 }
 
 /* Deferred work for an AIE4_MSG_OP_ASYNC_EVENT_NOTE message. */
@@ -356,6 +363,7 @@ struct aie4_async_note_work {
 	u32			event_id;
 	u32			ctx_id;
 	u32			async_event_type;
+	u64			ctx_gen;
 };
 
 static void aie4_async_note_worker(struct work_struct *work)
@@ -369,7 +377,7 @@ static void aie4_async_note_worker(struct work_struct *work)
 	case AIE4_ASYNC_NOTE_CONTEXT_ERROR:
 		XDNA_ERR(xdna, "async notification %s, ctx_id=%u",
 			 aie4_async_note_str(ev->event_id), ev->ctx_id);
-		aie4_async_note_ctx_error_recover(aie, ev->ctx_id);
+		aie4_async_note_ctx_error_recover(aie, ev->ctx_id, ev->ctx_gen);
 		break;
 	case AIE4_ASYNC_NOTE_DEBUG_MODE_ACTIVATED:
 		/*
@@ -392,7 +400,7 @@ static void aie4_async_note_worker(struct work_struct *work)
 		 * this way.
 		 */
 		if (ev->async_event_type == AIE4_ASYNC_EVENT_TYPE_CTX_ERROR)
-			aie4_async_note_ctx_error_recover(aie, ev->ctx_id);
+			aie4_async_note_ctx_error_recover(aie, ev->ctx_id, ev->ctx_gen);
 		break;
 	case AIE4_ASYNC_NOTE_POWER_ERROR:
 		XDNA_ERR(xdna, "async notification %s: unrecoverable power sequencing error",
@@ -473,6 +481,8 @@ int aie4_mgmt_async_event_handler(void *handle, u32 msg_id, u32 opcode,
 	ev->event_id = event_id;
 	ev->ctx_id = ctx_id;
 	ev->async_event_type = async_event_type;
+	/* Contexts created after this notification are not the one it reports. */
+	ev->ctx_gen = READ_ONCE(aie->ctx_gen);
 	INIT_WORK(&ev->work, aie4_async_note_worker);
 
 	if (!amdxdna_async_events_queue_work(aie, &ev->work)) {
