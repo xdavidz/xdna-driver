@@ -128,6 +128,7 @@ enum aie4_msg_runtime_config_type {
 	AIE4_RUNTIME_CONFIG_FW_LOG_LEVEL		= 0x5,
 	AIE4_RUNTIME_CONFIG_CERT_TIMEOUT		= 0x6,
 	AIE4_RUNTIME_CONFIG_HWS_DEBUG_MODE		= 0xB,
+	AIE4_RUNTIME_CONFIG_CONTEXT_TIMEOUT		= 0xC,
 	AIE4_RUNTIME_CONFIG_CTX_SWITCH_HYSTERESIS	= 0xD,
 	AIE4_RUNTIME_CONFIG_CONFIGURE_DPM		= 0xF,
 	AIE4_RUNTIME_CONFIG_DPM_BW_BUSYNESS_ENABLE	= 0x15,
@@ -215,6 +216,11 @@ struct aie4_msg_runtime_config_hws_debug_mode {
 
 /* CERT opcode deadlock interval. 0 disables the checker. */
 struct aie4_msg_runtime_config_cert_timeout {
+	__u32 timeout_ms;
+} __packed;
+
+/* Firmware context timeout (TDR). 0 disables it. */
+struct aie4_msg_runtime_config_context_timeout {
 	__u32 timeout_ms;
 } __packed;
 

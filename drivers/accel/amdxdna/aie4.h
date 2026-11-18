@@ -33,6 +33,9 @@ struct amdxdna_dev_priv;
 /* Default CERT opcode deadlock interval in milliseconds. 0 disables it. */
 #define AIE4_CERT_TIMEOUT_MS	50
 
+/* Context timeout not set: firmware keeps its own default. */
+#define AIE4_CTX_TIMEOUT_UNSET	U32_MAX
+
 struct cert_comp {
 	struct amdxdna_dev_hdl          *ndev;
 	u32                             msix_idx;
@@ -187,6 +190,13 @@ struct amdxdna_dev_hdl {
 	 */
 	u32				cert_timeout_ms;
 
+	/*
+	 * Firmware context timeout (TDR) in milliseconds, set by root through
+	 * debugfs for debugging; 0 disables it. AIE4_CTX_TIMEOUT_UNSET keeps
+	 * the firmware default. Programmed again at each PF/classic hw start.
+	 */
+	u32				ctx_timeout_ms;
+
 	struct amdxdna_drm_query_firmware_version cert_version;
 };
 
@@ -269,6 +279,7 @@ int aie4_force_preemption(struct amdxdna_dev_hdl *ndev, bool enable);
 int aie4_configure_hws_debug_mode(struct amdxdna_dev_hdl *ndev, u8 mode);
 int aie4_set_ctx_hysteresis(struct amdxdna_dev_hdl *ndev, u32 timeout_us);
 int aie4_set_cert_timeout(struct amdxdna_dev_hdl *ndev, u32 timeout_ms);
+int aie4_set_ctx_timeout(struct amdxdna_dev_hdl *ndev, u32 timeout_ms);
 int aie4_get_ctx_hysteresis(struct amdxdna_dev_hdl *ndev, u32 *timeout_us);
 int aie4_get_dpm_compute_params(struct amdxdna_dev_hdl *ndev,
 				struct aie4_msg_runtime_config_configure_dpm *cfg);

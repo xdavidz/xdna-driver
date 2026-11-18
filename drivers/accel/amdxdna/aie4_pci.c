@@ -618,6 +618,8 @@ static int aie4_config_fw(struct amdxdna_dev_hdl *ndev)
 
 	/* Best-effort tuning knobs; failure is warned inside and does not fail hw start. */
 	aie4_set_ctx_hysteresis(ndev, ndev->ctx_switch_hysteresis_us);
+	if (ndev->ctx_timeout_ms != AIE4_CTX_TIMEOUT_UNSET)
+		aie4_set_ctx_timeout(ndev, ndev->ctx_timeout_ms);
 	aie4_set_dpm_compute_params(ndev);
 	aie4_set_dpm_bw_busyness(ndev);
 	aie4_set_dpm_pwr_ovr_percent_table(ndev);
@@ -1118,6 +1120,7 @@ static int aie4m_pcidev_init(struct amdxdna_dev *xdna)
 	ndev->aie.xdna = xdna;
 	ndev->kernel_submit = true;
 	ndev->ctx_switch_hysteresis_us = AIE4_CTX_HYSTERESIS_US;
+	ndev->ctx_timeout_ms = AIE4_CTX_TIMEOUT_UNSET;
 	ndev->pw_mode = POWER_MODE_DEFAULT;
 	xdna->dev_handle = ndev;
 
@@ -2830,6 +2833,52 @@ unlock:
 DEFINE_DEBUGFS_ATTRIBUTE(aie4_ctx_hysteresis_fops, aie4_ctx_hysteresis_get,
 			 aie4_ctx_hysteresis_set, "%llu\n");
 
+static int aie4_ctx_timeout_get(void *data, u64 *val)
+{
+	struct amdxdna_dev_hdl *ndev = data;
+
+	*val = ndev->ctx_timeout_ms;
+	return 0;
+}
+
+static int aie4_ctx_timeout_set(void *data, u64 val)
+{
+	struct amdxdna_dev_hdl *ndev = data;
+	struct amdxdna_dev *xdna = ndev->aie.xdna;
+	int ret, idx;
+
+	if (val >= AIE4_CTX_TIMEOUT_UNSET)
+		return -EINVAL;
+
+	if (!drm_dev_enter(&xdna->ddev, &idx))
+		return -ENODEV;
+
+	mutex_lock(&xdna->dev_lock);
+
+	ret = amdxdna_pm_resume_get_locked(xdna);
+	if (ret)
+		goto unlock;
+
+	ret = aie4_set_ctx_timeout(ndev, (u32)val);
+	if (!ret)
+		ndev->ctx_timeout_ms = (u32)val;
+
+	amdxdna_pm_suspend_put(xdna);
+
+unlock:
+	mutex_unlock(&xdna->dev_lock);
+	drm_dev_exit(idx);
+
+	return ret;
+}
+
+/*
+ * Firmware context timeout (TDR) in milliseconds; 0 disables it. Reads
+ * 4294967295 until set, meaning the firmware default.
+ */
+DEFINE_DEBUGFS_ATTRIBUTE(aie4_ctx_timeout_fops, aie4_ctx_timeout_get,
+			 aie4_ctx_timeout_set, "%llu\n");
+
 static int aie4_npufw_time_get(void *data, u64 *val)
 {
 	struct amdxdna_dev_hdl *ndev = data;
@@ -2954,6 +3003,15 @@ void aie4_debugfs_init(struct amdxdna_dev *xdna)
 		debugfs_create_file_unsafe("ctx_switch_hysteresis_us", 0600,
 					   xdna->ddev.accel->debugfs_root, ndev,
 					   &aie4_ctx_hysteresis_fops);
+
+	/*
+	 * Context timeout is a system-control runtime config: firmware applies
+	 * it to every context, including those of the VFs. PF/classic only.
+	 */
+	if (!to_pci_dev(xdna->ddev.dev)->is_virtfn)
+		debugfs_create_file_unsafe("ctx_timeout_ms", 0600,
+					   xdna->ddev.accel->debugfs_root, ndev,
+					   &aie4_ctx_timeout_fops);
 
 	/*
 	 * NPU firmware timestamp is fetched over the firmware mailbox, which
