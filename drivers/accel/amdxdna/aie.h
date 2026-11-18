@@ -81,6 +81,8 @@ struct aie_device {
 	/* Async error reporting state, shared by aie2 and aie4. */
 	struct amdxdna_async_events	*async_events;
 	struct amdxdna_async_error	last_async_err;
+	/* Bumped on each aie4 firmware context creation, under dev_lock. */
+	u64				ctx_gen;
 };
 
 struct aie_hw_ops {

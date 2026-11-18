@@ -225,6 +225,7 @@ int amdxdna_async_events_init(struct aie_device *aie);
 void amdxdna_async_events_fini(struct aie_device *aie);
 void amdxdna_async_events_free(struct aie_device *aie);
 bool amdxdna_async_events_queue_work(struct aie_device *aie, struct work_struct *work);
+bool amdxdna_async_events_armed(struct aie_device *aie);
 int amdxdna_get_array_last_async_error(struct aie_device *aie,
 				       struct amdxdna_drm_get_array *args);
 

@@ -74,6 +74,8 @@ struct amdxdna_hwctx_priv {
 
 	struct cert_comp                *cert_comp;
 	u32                             hw_ctx_id;
+	/* aie_device ctx_gen when this firmware context was created. */
+	u64                             gen;
 	/* Attached debug buffers, held until removal or fini. */
 	struct amdxdna_gem_obj          *fw_buf_bo[AMDXDNA_FW_BUF_NUM];
 	/* Their configuration, sent again when the context is created. */
@@ -304,7 +306,7 @@ int aie4_register_asyn_event_msg(struct amdxdna_dev_hdl *ndev, dma_addr_t addr, 
 extern const struct aie_async_error_desc aie4_async_error_desc;
 int aie4_async_event_register(struct aie_device *aie, dma_addr_t addr, u32 size,
 			      void *handle, int (*cb)(void *, void __iomem *, size_t));
-bool aie4_handle_dev_event(struct aie_device *aie, u32 type, void *vaddr);
+bool aie4_handle_dev_event(struct aie_device *aie, u32 type, void *vaddr, u64 ctx_gen);
 int aie4_mgmt_async_event_handler(void *handle, u32 msg_id, u32 opcode,
 				  void __iomem *data, size_t size);
 int aie4_get_array_async_error(struct amdxdna_dev_hdl *ndev,
