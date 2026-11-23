@@ -406,6 +406,27 @@ static int aie4_fw_load(struct amdxdna_dev_hdl *ndev)
 	return ret;
 }
 
+/*
+ * Reload firmware that came up: power the NPU off through the SMU and load
+ * the firmware again. No driver message has reached it yet, so PMFW lets it
+ * be powered off. Fail without touching it if it is not alive. Clear the
+ * alive flag in between, so aie4_fw_is_alive() waits for the new firmware
+ * rather than reading the flag the old one left behind.
+ */
+static int aie4_fw_reload(struct amdxdna_dev_hdl *ndev)
+{
+	struct amdxdna_dev *xdna = ndev->aie.xdna;
+	int ret;
+
+	ret = aie4_fw_is_alive(xdna);
+	if (ret)
+		return ret;
+
+	aie4_fw_unload(ndev);
+	aie4_fw_clear_alive(xdna);
+	return aie4_fw_load(ndev);
+}
+
 static void aie4_free_ctx_restore_pool(struct amdxdna_dev_hdl *ndev)
 {
 	if (!ndev->restore_pool_hdl)
@@ -2203,10 +2224,14 @@ static void aie4_pf_reset_done(struct amdxdna_dev *xdna)
 	 */
 	aie4_zero_work_buffer(ndev);
 
-	/* PF owns firmware: must do full fw_load cycle after FLR. */
-	ret = aie4_pf_hw_restart(ndev);
+	/* PF owns firmware: reload what PMFW restarted after the FLR. */
+	ret = aie4_fw_reload(ndev);
 	if (ret)
 		goto done;
+
+	ret = aie4_pf_hw_restart(ndev);
+	if (ret)
+		goto fw_unload;
 
 	ret = aie4_restore_sriov(ndev);
 	if (ret)
@@ -2226,6 +2251,10 @@ static void aie4_pf_reset_done(struct amdxdna_dev *xdna)
 
 hw_stop:
 	aie4_pf_hw_stop(ndev);
+	goto done;
+fw_unload:
+	/* Like a failed probe: power off firmware the driver cannot use. */
+	aie4_fw_unload(ndev);
 done:
 	XDNA_ERR(xdna, "reset failed: %d, service offline", ret);
 }
@@ -2324,9 +2353,14 @@ static void aie4_classic_reset_done(struct amdxdna_dev *xdna)
 	/* FLR only, for the reason in aie4_pf_reset_done(). */
 	aie4_zero_work_buffer(ndev);
 
-	ret = aie4_classic_hw_restart(ndev);
+	/* Reload the firmware, as aie4_pf_reset_done() does. */
+	ret = aie4_fw_reload(ndev);
 	if (ret)
 		goto done;
+
+	ret = aie4_classic_hw_restart(ndev);
+	if (ret)
+		goto fw_unload;
 
 	ret = aie4_hwctx_reconnect_all(ndev);
 	if (ret)
@@ -2347,6 +2381,10 @@ static void aie4_classic_reset_done(struct amdxdna_dev *xdna)
 hw_clear:
 	aie4_hwctx_suspend_all(ndev, true);
 	aie4_classic_hw_stop(ndev);
+	goto done;
+fw_unload:
+	/* Like a failed probe: power off firmware the driver cannot use. */
+	aie4_fw_unload(ndev);
 done:
 	XDNA_ERR(xdna, "reset failed: %d, service offline", ret);
 }
@@ -2466,8 +2504,11 @@ static int aie4_classic_init(struct amdxdna_dev *xdna)
 	/* Running firmware, no message sent yet: see aie4_pf_init() */
 	ndev = xdna->dev_handle;
 	ret = aie4_mailbox_init(ndev);
-	if (ret)
+	/* Power off firmware with a mailbox version the driver does not support. */
+	if (ret == -EOPNOTSUPP)
 		goto fw_unload;
+	if (ret)
+		goto free_bufs;
 
 	/* Not fatal: without a work buffer firmware refuses hardware contexts */
 	ret = aie4_alloc_work_buffer(ndev);
@@ -2499,6 +2540,7 @@ mbox_fini:
 	amdxdna_async_events_fini(&ndev->aie);
 fw_unload:
 	aie4_fw_unload(ndev);
+free_bufs:
 	/* Firmware is stopped; no slot buffer can be written. */
 	amdxdna_async_events_free(&ndev->aie);
 	aie4_free_work_buffer(ndev);
